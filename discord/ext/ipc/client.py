@@ -7,6 +7,34 @@ from discord.ext.ipc.errors import *
 
 log = logging.getLogger(__name__)
 
+import time
+import random
+
+
+class Backoff:
+    def __init__(self, base=1, *, integral=False):
+        self._base = base
+
+        self._exp = 0
+        self._max = 10
+        self._reset_time = base * 2 ** 11
+        self._last_invocation = time.monotonic()
+
+        rand = random.Random()
+        rand.seed()
+
+        self._randfunc = rand.randrange if integral else rand.uniform
+
+    def delay(self):
+        invocation = time.monotonic()
+        interval = invocation - self._last_invocation
+        self._last_invocation = invocation
+
+        if interval > self._reset_time:
+            self._exp = 0
+
+        self._exp = min(self._exp + 1, self._max)
+        return self._randfunc(0, self._base * 2 ** self._exp)
 
 class Client:
     """
@@ -35,6 +63,7 @@ class Client:
 
         self.websocket = None
         self.multicast = None
+        self.concurrent = None
 
         self.multicast_port = multicast_port
 
@@ -106,7 +135,22 @@ class Client:
 
         log.debug("Client > %r", payload)
 
-        recv = await self.websocket.receive()
+        recv = None
+        
+        try:
+            recv = await self.websocket.receive()
+        except Exception:
+            self.concurrent = True
+            for attempt in range(5):
+                backoff = Backoff(base=1)
+                try:
+                    recv = await self.websocket.receive()
+                    self.concurrent = False
+                except Exception:
+                    delay = backoff.delay()
+                    log.warning(f"Concurrent call received, attempt {attempt}/5, retrying in <{delay}> seconds")
+                    asyncio.sleep(delay)
+                    continue
 
         log.debug("Client < %r", recv)
 
