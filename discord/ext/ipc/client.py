@@ -134,8 +134,6 @@ class Client:
         await self.websocket.send_json(payload)
 
         log.debug("Client > %r", payload)
-
-        recv = None
         
         try:
             recv = await self.websocket.receive()
