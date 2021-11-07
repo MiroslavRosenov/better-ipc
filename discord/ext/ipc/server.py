@@ -181,9 +181,7 @@ class Server:
                         self.bot.dispatch("ipc_error", endpoint, error)
 
                         response = {
-                            "error": "IPC route raised error of type {}".format(
-                                type(error).__name__
-                            ),
+                            "error": str(error),
                             "code": 500,
                         }
 
