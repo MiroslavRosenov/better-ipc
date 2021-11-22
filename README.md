@@ -43,14 +43,14 @@ def setup(bot):
   bot.add_cog(IpcRoutes(bot))
 ```
 
-# FastAPI App
+# Then in your webserver (FastAPI here for example)
 ```python
 from discord.ext import ipc
 from fastapi import FastAPI
 
 ipc_client = ipc.Client(secret_key="your_secret_key", port=8765)
 
-app = FastAPI
+app = FastAPI()
 
 @app.route('/')
 async def main():
