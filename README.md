@@ -54,7 +54,7 @@ app = FastAPI()
 
 @app.route('/')
 async def main():
-    data = await ipc_client.request("get_member_count")
+    data = await ipc_client.request("get_member_count", guild_id=81298397129389112)
     return data
 
 if __name__ == '__main__':
