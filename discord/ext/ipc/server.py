@@ -252,4 +252,4 @@ class Server:
         self.bot.loop.create_task(self.__start(self._server, self.port))
 
         self.bot.dispatch("ipc_ready")
-        logging.info("The IPC server is ready")
+        log.info("The IPC server is ready")
