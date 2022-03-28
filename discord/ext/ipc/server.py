@@ -1,7 +1,9 @@
 import logging
-
 import aiohttp.web
+
+from aiohttp.web import Application, TCPSite, AppRunner, Request
 from discord.ext.ipc.errors import *
+from discord.ext.commands import Bot
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +30,6 @@ def route(name=None):
 
     return decorator
 
-
 class IpcServerResponse:
     def __init__(self, data):
         self._json = data
@@ -47,7 +48,6 @@ class IpcServerResponse:
 
     def __str__(self):
         return self.__repr__()
-
 
 class Server:
     """The IPC server. Usually used on the bot process for receiving
@@ -73,31 +73,25 @@ class Server:
     ROUTES = {}
 
     def __init__(
-        self,
-        bot,
-        host="localhost",
-        port=8765,
-        secret_key=None,
-        do_multicast=True,
-        multicast_port=20000,
+        self, 
+        bot: Bot, 
+        host: str = "localhost", 
+        port: int = 8765, 
+        secret_key: str = None, 
+        do_multicast: bool = True,
+        multicast_port: int = 20000
     ):
         self.bot = bot
-        self.loop = bot.loop
-
         self.secret_key = secret_key
-
         self.host = host
         self.port = port
-
         self._server = None
         self._multicast_server = None
-
         self.do_multicast = do_multicast
         self.multicast_port = multicast_port
-
         self.endpoints = {}
 
-    def route(self, name=None):
+    def route(self, name:str = None):
         """Used to register a coroutine as an endpoint when you have
         access to an instance of :class:`.Server`.
 
@@ -123,7 +117,7 @@ class Server:
 
         self.ROUTES = {}
 
-    async def handle_accept(self, request):
+    async def handle_accept(self, request: Request):
         """Handles websocket requests from the client process.
 
         Parameters
@@ -133,7 +127,7 @@ class Server:
         """
         self.update_endpoints()
 
-        log.info("Initiating IPC Server.")
+        log.info("Initiating IPC Server")
 
         websocket = aiohttp.web.WebSocketResponse()
         await websocket.prepare(request)
@@ -206,7 +200,7 @@ class Server:
 
                     raise JSONEncodeError(error_response)
 
-    async def handle_multicast(self, request):
+    async def handle_multicast(self, request: Request):
         """Handles multicasting websocket requests from the client.
 
         Parameters
@@ -238,25 +232,24 @@ class Server:
 
             await websocket.send_json(response)
 
-    async def __start(self, application, port):
+    async def __start(self, application: Application, port: int):
         """Start both servers"""
-        runner = aiohttp.web.AppRunner(application)
+        runner = AppRunner(application)
         await runner.setup()
 
-        site = aiohttp.web.TCPSite(runner, self.host, port)
+        site = TCPSite(runner, self.host, port)
         await site.start()
 
     def start(self):
-        """Starts the IPC server."""
-        self.bot.dispatch("ipc_ready")
-
-        self._server = aiohttp.web.Application()
+        """Starts the IPC server"""
+        self._server = Application()
         self._server.router.add_route("GET", "/", self.handle_accept)
 
         if self.do_multicast:
-            self._multicast_server = aiohttp.web.Application()
+            self._multicast_server = Application()
             self._multicast_server.router.add_route("GET", "/", self.handle_multicast)
+            self.bot.loop.create_task(self.__start(self._multicast_server, self.multicast_port))
+        self.bot.loop.create_task(self.__start(self._server, self.port))
 
-            self.loop.run_until_complete(self.__start(self._multicast_server, self.multicast_port))
-
-        self.loop.run_until_complete(self.__start(self._server, self.port))
+        self.bot.dispatch("ipc_ready")
+        logging.info("The IPC server is ready")
