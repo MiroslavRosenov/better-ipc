@@ -1,6 +1,6 @@
 ## Installation
 ```shell
-python3.9 -m pip install -U git+https://github.com/Daishiky/discord-ext-ipc
+python3.9 -m pip install -U git+https://github.com/MiroslavRosenov/discord-ext-ipc
 ```
 
 ## Usage
