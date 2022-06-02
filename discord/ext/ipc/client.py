@@ -2,7 +2,7 @@ import asyncio
 import logging
 import aiohttp
 
-from typing import Optional, Any
+from typing import Optional, Any, Union
 from aiohttp import ClientWebSocketResponse
 from discord.ext.ipc.errors import *
 
@@ -30,7 +30,7 @@ class Client:
         host: str = "127.0.0.1",
         port: int = None,
         multicast_port: int = 20000,
-        secret_key: typing.Union[str, bytes] = None
+        secret_key: Union[str, bytes] = None
     ):
         """Constructor"""
         self.loop = asyncio.get_event_loop()
