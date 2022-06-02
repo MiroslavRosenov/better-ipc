@@ -22,12 +22,10 @@ class Routes(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ipc_ready(self):
-        """Called upon the IPC Server being ready"""
         logging.info("Ipc is ready.")
 
     @commands.Cog.listener()
     async def on_ipc_error(self, endpoint: str, error: IPCError):
-        """Called upon an error being raised within an IPC route"""
         logging.error(endpoint, "raised", error, file=sys.stderr)
     
     @route()
