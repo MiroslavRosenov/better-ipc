@@ -39,7 +39,7 @@ async def setup(bot):
     await bot.add_cog(Routes(bot))
 ```
 
-# Website backend example (The example is written in Quart, but you could use FastAPI as well)
+## Website backend example (The example is written in Quart, but you could use FastAPI as well)
 ```python
 from discord.ext import ipc
 from quart import Quart
