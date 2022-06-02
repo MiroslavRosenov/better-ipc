@@ -1,61 +1,56 @@
 ## Installation
 ```shell
-python3.9 -m pip install -U git+https://github.com/MiroslavRosenov/discord-ext-ipc
+python -m pip install -U git+https://github.com/MiroslavRosenov/discord-ext-ipc
 ```
 
-## Usage
-
-# Inside a cog
+# Example cog
 ```python
-import inspect
+import logging
 import discord
-from discord.ext import commands, ipc
 
-class IpcRoutes(commands.Cog):
-    def __init__(self, bot):
+from discord.ext import commands, ipc
+from discord.ext.ipc.Server import route
+from discord.ext.ipc.errors import IPCError
+
+class Routes(commands.Cog):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
 
         if not hasattr(bot, "ipc"):
-            bot.ipc = ipc.Server(self.bot, secret_key="your_secret_key_here")
+            bot.ipc = ipc.Server(self.bot, host="127.0.0.1", port=2300, secret_key="your_secret_key_here")
             bot.ipc.start()
-        
-        
-        for n,f in inspect.getmembers(self):
-            if n.startswith("get_"):
-                bot.ipc.endpoints[n] = f.__call__
 
     @commands.Cog.listener()
     async def on_ipc_ready(self):
         """Called upon the IPC Server being ready"""
-        print("Ipc is ready.")
+        logging.info("Ipc is ready.")
 
     @commands.Cog.listener()
-    async def on_ipc_error(self, endpoint, error):
+    async def on_ipc_error(self, endpoint: str, error: IPCError):
         """Called upon an error being raised within an IPC route"""
-        print(endpoint, "raised", error, file=sys.stderr)
+        logging.error(endpoint, "raised", error, file=sys.stderr)
+    
+    @route()
+    async def get_user_data(self, data):
+        user = self.bot.get_user(data.user_id)
+        return user._to_minimal_user_json() # THE OUTPUT MUST BE JSON SERIALIZABLE!
 
-    async def get_member_count(self, data):
-      guild = self.bot.get_guild(data.guild_id)  # get the guild object using parsed guild_id
-
-      return guild.member_count  # return the member count to the client
-
-def setup(bot):
-  bot.add_cog(IpcRoutes(bot))
+async def setup(bot):
+    await bot.add_cog(Routes(bot))
 ```
 
-# Then in your webserver (FastAPI here for example)
+# Website backend example (The example is written in Quart, but you could use FastAPI as well)
 ```python
 from discord.ext import ipc
-from fastapi import FastAPI
+from quart import Quart
 
-ipc_client = ipc.Client(secret_key="your_secret_key", port=8765)
-
-app = FastAPI()
+app = Quart(__name__)
+ipc_client = ipc.Client(host="127.0.0.1", port=2300, secret_key="your_secret_key_here") # These params must be the same as the ones in the cog
 
 @app.route('/')
 async def main():
-    data = await ipc_client.request("get_member_count", guild_id=81298397129389112)
-    return data
+    data = await ipc_client.request("get_user_data", user_id=383946213629624322)
+    return str(data)
 
 if __name__ == '__main__':
     app.run()
