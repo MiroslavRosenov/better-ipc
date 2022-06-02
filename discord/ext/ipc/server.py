@@ -10,6 +10,7 @@ log = logging.getLogger(__name__)
 def route(name=None):
     """
     |method|
+    
     Used to register a coroutine as an endpoint when you don't have
     access to an instance of :class:`.Server`
 
