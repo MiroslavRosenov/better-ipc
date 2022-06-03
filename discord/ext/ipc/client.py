@@ -1,3 +1,4 @@
+from __future__ import annotations
 import asyncio
 import logging
 import typing
@@ -158,7 +159,7 @@ class Client:
         self, 
         loop: Optional[asyncio.AbstractEventLoop] = None,
         logger: Optional[logging.Logger] = None
-    ) -> None:
+    ) -> Client:
         """
         |coro|
 
@@ -183,6 +184,8 @@ class Client:
         self.logger = logger
         self.lock = asyncio.Lock()
         await self.init_sock()
+
+        return self
     
     async def close(self) -> None:
         """
@@ -193,3 +196,4 @@ class Client:
         if self.session:
             await self.session.close()
         self.closed = True
+        
