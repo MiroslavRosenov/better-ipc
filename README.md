@@ -43,7 +43,11 @@ from discord.ext import ipc
 from quart import Quart
 
 app = Quart(__name__)
-ipc_client = ipc.Client(host="127.0.0.1", port=2300, secret_key="your_secret_key_here") # These params must be the same as the ones in the cog
+IPC = ipc.Client(
+    host="127.0.0.1", 
+    port=2300, 
+    secret_key="your_secret_key_here"
+) # These params must be the same as the ones in the cog
 
 @app.route('/')
 async def main():
@@ -51,5 +55,13 @@ async def main():
     return str(data)
 
 if __name__ == '__main__':
-    app.run()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        app.ipc = loop.run_until_complete(IPC.start(loop=loop))
+        app.run(loop=loop)
+    finally:
+        loop.run_until_complete(app.ipc.close())
+        loop.close()
 ```
