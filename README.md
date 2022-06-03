@@ -1,11 +1,11 @@
 ![](https://raw.githubusercontent.com/MiroslavRosenov/discord-ext-ipc/main/banner.png)
 
-## Installation
+# Installation
 ```shell
 python -m pip install -U git+https://github.com/MiroslavRosenov/discord-ext-ipc
 ```
 
-# Example cog
+## Inside your discord client
 ```python
 import logging
 import discord
@@ -39,7 +39,7 @@ async def setup(bot):
     await bot.add_cog(Routes(bot))
 ```
 
-## Website backend example (The example is written in Quart, but you could use FastAPI as well)
+## Inside your web application
 ```python
 from discord.ext import ipc
 from quart import Quart
