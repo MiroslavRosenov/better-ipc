@@ -1,13 +1,14 @@
 import logging
 import aiohttp.web
 
+from typing import Optional
 from aiohttp.web import Application, TCPSite, AppRunner, Request
 from discord.ext.ipc.errors import *
-from discord.ext.commands import Bot
+from discord.ext.commands import Bot, Cog
 
 log = logging.getLogger(__name__)
 
-def route(name=None):
+def route(name: Optional[str] = None):
     """
     |method|
     
@@ -21,7 +22,10 @@ def route(name=None):
         used.
     """
     def decorator(func):
-        Server.ROUTES[name or func.__name__] = func
+        if not name:
+            Server.endpoints[func.__name__] = func
+        else:
+            Server.endpoints[name] = func
         return func
     return decorator
 
@@ -58,25 +62,25 @@ class Server:
     host: :str:`str`
         The host to run the IPC Server on. Defaults to `127.0.0.1`.
     port: :str:`int`
-        The port to run the IPC Server on. Defaults to 1010.
+        The port to run the IPC Server on. Defaults to 1025.
     secret_key: :str:`str`
         A secret key. Used for authentication and should be the same as
         your client's secret key.
     do_multicast: :bool:`bool`
-        Turn multicasting on/off. Defaults to True
+        Turn multicasting on/off. Defaults to False
     multicast_port: :int:`int`
         The port to run the multicasting server on. Defaults to 20000
+    logger: `logging.Logger`
+        A custom logger for all event. Default on is `discord.ext.ipc`
     """
-
-    ROUTES = {}
 
     def __init__(
         self, 
         bot: Bot, 
         host: str = "127.0.0.1", 
-        port: int = 1010, 
+        port: int = 1025,
         secret_key: str = None, 
-        do_multicast: bool = True,
+        do_multicast: bool = False,
         multicast_port: int = 20000,
         logger: logging.Logger = log
     ):
@@ -87,18 +91,26 @@ class Server:
         self.do_multicast = do_multicast
         self.multicast_port = multicast_port
         self.logger = logger
-        self._server = None
-        self._multicast_server = None
-        self.endpoints = {}
+    
+    endpoints = {}
+    _server = None
+    _multicast_server = None
+    _cls: Cog = None
 
-    def start(self) -> None:
+    def start(self, cls: Cog) -> None:
         """
         |method|
         
         Starts the IPC server
+
+        Parameters
+        ----------
+        cls: `~discord.ext.commands.Cog`
+            The Cog where all the routes are located.
         """
         self._server = Application()
         self._server.router.add_route("GET", "/", self.handle_accept)
+        self._cls = cls.__cog_name__
 
         if self.do_multicast:
             self._multicast_server = Application()
@@ -109,7 +121,7 @@ class Server:
         self.bot.dispatch("ipc_ready")
         self.logger.info("The IPC server is ready")
 
-    def route(self, name: str = None):
+    def route(self, name: Optional[str] = None):
         """
         |method|
 
@@ -123,6 +135,7 @@ class Server:
         name: `str`
             The endpoint name. If not provided the method name will be used.
         """
+
         def decorator(func):
             if not name:
                 self.endpoints[func.__name__] = func
@@ -130,15 +143,6 @@ class Server:
                 self.endpoints[name] = func
             return func
         return decorator
-
-    def update_endpoints(self) -> None:
-        """
-        |method|
-        
-        Called internally to update the server's endpoints for cog routes.
-        """
-        self.endpoints = {**self.endpoints, **self.ROUTES}
-        self.ROUTES = {}
 
     async def handle_accept(self, request: Request) -> None:
         """
@@ -151,7 +155,6 @@ class Server:
         request: :class:`~aiohttp.web.Request`
             The request made by the client, parsed by aiohttp.
         """
-        self.update_endpoints() # VERRY IMPORTANT !!!!!!
         self.logger.info("Handing new IPC request")
 
         websocket = aiohttp.web.WebSocketResponse()
@@ -180,27 +183,26 @@ class Server:
                     }
                 else:
                     server_response = IpcServerResponse(request)
-                    
+            
                     try:
-                        attempted_cls = self.bot.cogs.get(
-                            self.endpoints[endpoint].__qualname__.split(".")[0]
-                        )
-
-                        if attempted_cls:
+                        if (attempted_cls := self.bot.cogs.get(self.endpoints[endpoint].__qualname__.split(".")[0])):
                             arguments = (attempted_cls, server_response)
                         else:
-                            arguments = (server_response,)
+                            guaranteed_cls = self.bot.cogs.get(self._cls)
+                            arguments = (guaranteed_cls, server_response)
                     except AttributeError:
-                        arguments = (server_response,)
+                        arguments = (server_response, )
+
+                    self.logger.debug(arguments)
 
                     try:
-                        ret = await self.endpoints[endpoint](*arguments)
-                        response = ret
+                        response = await self.endpoints[endpoint](*arguments)
                     except Exception as error:
                         self.logger.error(
                             "Received error while executing %r with %r",
                             endpoint,
                             request,
+                            exc_info=error
                         )
                         self.bot.dispatch("ipc_error", endpoint, error)
 
@@ -212,6 +214,7 @@ class Server:
             try:
                 if not response.get("code"):
                     response["code"] = 200
+
                 await websocket.send_json(response)
                 self.logger.debug("IPC Server > %r", response)
             except TypeError as error:
@@ -282,21 +285,19 @@ class Server:
             The specific port to run the application (:class:`~aiohttp.web.Application`)
         """
         self.logger.debug('Starting the IPC runner')
-        self._runner = _runner = AppRunner(application)
-        await _runner.setup()
+        self._runner = AppRunner(application)
+        await self._runner.setup()
 
         self.logger.debug('Starting the IPC webserver')
-        self._webserver = _webserver = TCPSite(_runner, self.host, port)
+        self._webserver = _webserver = TCPSite(self._runner, self.host, port)
         await _webserver.start()
 
-    async def destroy(self) -> None:
+    async def stop(self) -> None:
         """
         |coro|
 
-        Stops both the IPC runner and the IPC webserver
+        Stops both the IPC webserver
         """
-        self.logger.debug('Cleaning up the IPC runner')
-        await self._runner.cleanup()
-        if self._webserver:
-            self.logger.debug('Closing the IPC webserver')
-            await self._webserver.stop()
+        self.logger.info('Stopping up the IPC webserver')
+        self.logger.debug(self._runner.addresses)
+        await self._webserver.stop()
