@@ -49,7 +49,7 @@ IPC = ipc.Client(
     host="127.0.0.1", 
     port=2300, 
     secret_key="your_secret_key_here"
-) # These params must be the same as the ones in the cog
+) # These params must be the same as the ones in the client
 
 @app.route('/')
 async def main():
