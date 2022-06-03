@@ -120,9 +120,9 @@ class Client:
         try:
             await self.websocket.send_json(payload)
         except ConnectionResetError:
-            self.logger.error("Cannot write to closing transport, attempting reconnection in 3 seconds.")
+            self.logger.error("Cannot write to closing transport, attempting reconnection in 5 seconds.")
             await self.session.close()
-            await asyncio.sleep(3)
+            await asyncio.sleep(5)
             await self.init_sock()
 
             return await self.request(endpoint, **kwargs)
@@ -144,9 +144,9 @@ class Client:
             return await self.request(endpoint, **kwargs)
 
         elif recv.type == aiohttp.WSMsgType.CLOSED:
-            self.logger.error("WebSocket connection unexpectedly closed, attempting reconnection in 3 seconds.")
+            self.logger.error("WebSocket connection unexpectedly closed, attempting reconnection in 5 seconds.")
             await self.session.close()
-            await asyncio.sleep(3)
+            await asyncio.sleep(5)
             await self.init_sock()
 
             return await self.request(endpoint, **kwargs)
