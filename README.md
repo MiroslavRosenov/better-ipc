@@ -1,3 +1,5 @@
+![](https://raw.githubusercontent.com/MiroslavRosenov/discord-ext-ipc/main/banner.png)
+
 ## Installation
 ```shell
 python -m pip install -U git+https://github.com/MiroslavRosenov/discord-ext-ipc
