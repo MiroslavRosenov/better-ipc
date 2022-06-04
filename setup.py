@@ -44,6 +44,7 @@ version = match.group(2)
 setuptools.setup(
     name="better-ipc",
     author="DaPandaOfficial",
+    author_email="miroslav.rosenov39@gmail.com",
     classifiers=classifiers,
     description="A high-performance inter-process communication library designed to work with the latest version of discord.py",
     install_requires=requirements,
@@ -53,5 +54,6 @@ setuptools.setup(
     project_urls=project_urls,
     python_requires=">=3.8.0",
     url="https://github.com/MiroslavRosenov/better-ipc",
+    download_url="https://github.com/MiroslavRosenov/better-ipc/archive/refs/tags/1.0.tar.gz",
     version=version,
 )

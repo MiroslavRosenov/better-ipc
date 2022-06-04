@@ -1,2 +1,2 @@
 aiohttp==3.8.1
-git+https://github.com/Rapptz/discord.py@master
+git+https://github.com/Rapptz/discord.py
