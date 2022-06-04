@@ -47,5 +47,5 @@ setuptools.setup(
     install_requires=requirements,
     dependencies=dependencies,
     name="better-ipc",
-    version="1.0.2",
+    version="1.0.3",
 )
