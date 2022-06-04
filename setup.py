@@ -1,6 +1,5 @@
 import setuptools
 from pathlib import Path
-from discord.ext.ipc.__init__ import __version__, __title__
 
 with open("requirements.txt") as stream:
     raw = stream.read().splitlines()
@@ -47,6 +46,6 @@ setuptools.setup(
     long_description=long_description,
     install_requires=requirements,
     dependencies=dependencies,
-    name=__title__,
-    version=__version__,
+    name="DaPandaOfficial",
+    version="1.0.2",
 )
