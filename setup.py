@@ -5,6 +5,7 @@ from discord.ext.ipc.__init__ import __version__, __title__
 with open("requirements.txt") as stream:
     raw = stream.read().splitlines()
     requirements = [x for x in raw if not x.startswith("git+")]
+    dependencies = [x for x in raw if x.startswith("git+")]
 
 this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text()
@@ -43,6 +44,7 @@ setuptools.setup(
     keywords=["better_ipc", "ipc", "python", "discord.py"],
     long_description=long_description,
     install_requires=requirements,
+    dependencies=dependencies,
     name=__title__,
     version=__version__,
 )
