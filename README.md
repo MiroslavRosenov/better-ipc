@@ -1,6 +1,6 @@
 # Better IPC
 
-![](https://img.shields.io/discord/875005644594372638?label=discord)
+![https://discord.gg/Rpg7zjFYsh](https://img.shields.io/discord/875005644594372638?label=discord)
 ![](https://img.shields.io/pypi/v/better-ipc.svg)
 ![](https://img.shields.io/pypi/pyversions/better-ipc.svg)
 
