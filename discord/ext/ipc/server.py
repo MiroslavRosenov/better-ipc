@@ -212,7 +212,8 @@ class Server:
                         }
 
             try:
-                if response and not response.get("code"):
+                if not response: response = {}
+                if not response.get("code"):
                     response["code"] = 200
 
                 await websocket.send_json(response)
