@@ -1,4 +1,12 @@
 # Better IPC
+
+.. image::  https://img.shields.io/pypi/v/better-ipc.svg
+   :target: https://pypi.python.org/pypi/better-ipc
+   :alt: PyPI version info
+.. image:: https://img.shields.io/pypi/pyversions/better-ipc.svg
+   :target: https://pypi.python.org/pypi/better-ipc
+   :alt: PyPI supported Python versions
+
 ![](https://raw.githubusercontent.com/MiroslavRosenov/better-ipc/main/banner.png)
 
 A high-performance inter-process communication library designed to work with the latest version of [discord.py](https://github.com/Rapptz/discord.py)
