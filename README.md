@@ -3,12 +3,7 @@
 
 A high-performance inter-process communication library designed to work with the latest version of [discord.py](https://github.com/Rapptz/discord.py)
 
-This library is heavily based off of/uses code from [discod-ext-ipc](https://github.com/Ext-Creators/discord-ext-ipc), that is no longer maintained.
-
-# Installation
-```shell
-python -m pip install -U git+https://github.com/MiroslavRosenov/better-ipc
-```
+This library is heavily based on [discod-ext-ipc](https://github.com/Ext-Creators/discord-ext-ipc), which is no longer maintained.
 
 # Installation
 > Stable version (Guaranteed to work)
