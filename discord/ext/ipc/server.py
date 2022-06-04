@@ -3,7 +3,7 @@ import aiohttp.web
 
 from typing import Optional
 from aiohttp.web import Application, TCPSite, AppRunner, Request
-from discord.ext.commands import Bot
+from discord.ext.commands import Bot, Cog
 from discord.ext.ipc.errors import *
 from discord.ext.ipc.helpers import IpcServerResponse
 
@@ -74,11 +74,12 @@ class Server:
         self._multicast_server = None
         self._cls = None
 
-    def start(self, cls) -> None:
+    def start(self, cls: Cog) -> None:
         """
         |method|
         
         Starts the IPC server
+
         Parameters
         ----------
         cls: `~discord.ext.commands.Cog`
@@ -86,7 +87,7 @@ class Server:
         """
         self._server = Application()
         self._server.router.add_route("GET", "/", self.handle_accept)
-        self._cls = cls
+        self._cls = cls.__cog_name__
 
         if self.do_multicast:
             self._multicast_server = Application()
@@ -160,7 +161,7 @@ class Server:
                             guaranteed_cls = self.bot.cogs.get(self._cls)
                             arguments = (guaranteed_cls, server_response)
                     except AttributeError:
-                        arguments = (server_response, )
+                        raise IPCError("Missing CLS attribute")
 
                     self.logger.debug(arguments)
 
@@ -242,7 +243,9 @@ class Server:
     async def setup(self, application: Application, port: int) -> None:
         """
         |coro|
+
         This function stats the IPC runner and the IPC webserver
+        
         Parameters
         ----------
         application: :class:`aiohttp.web.Application`
@@ -261,6 +264,7 @@ class Server:
     async def stop(self) -> None:
         """
         |coro|
+        
         Stops both the IPC webserver
         """
         self.logger.info('Stopping up the IPC webserver')
