@@ -16,7 +16,7 @@ python -m pip install better-ipc
 python -m pip install -U git+https://github.com/MiroslavRosenov/better-ipc
 ```
 
-## Inside your discord Dlient (with decorator)
+## Inside your Discord client (with decorator)
 ```python
 import logging
 import discord
