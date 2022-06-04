@@ -1,3 +1,4 @@
+# Better IPC
 ![](https://raw.githubusercontent.com/MiroslavRosenov/discord-ext-ipc/main/banner.png)
 
 # Installation
