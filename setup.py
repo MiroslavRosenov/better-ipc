@@ -1,5 +1,6 @@
 import re
 import setuptools
+from pathlib import Path
 
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -41,20 +42,24 @@ with open("discord/ext/ipc/__init__.py") as stream:
 
 version = match.group(2)
 
+this_directory = Path(__file__).parent
+long_description = (this_directory / "README.md").read_text()
+
 setuptools.setup(
     name="better-ipc",
     author="DaPandaOfficial",
-    author_email="miroslav.rosenov39@gmail.com",
-    classifiers=classifiers,
-    description="A high-performance inter-process communication library designed to work with the latest version of discord.py",
-    long_description=open("README.md").read().encode("UTF-8"),
-    install_requires=requirements,
-    dependency_links=dependencies,
-    license="Apache Software License",
-    packages=packages,
-    project_urls=project_urls,
     python_requires=">=3.8.0",
+    license="Apache Software License",
+    author_email="miroslav.rosenov39@gmail.com",
+    long_description_content_type="text/markdown",
     url="https://github.com/MiroslavRosenov/better-ipc",
     download_url="https://github.com/MiroslavRosenov/better-ipc/archive/refs/tags/1.0.tar.gz",
+    description="A high-performance inter-process communication library designed to work with the latest version of discord.py",
+    long_description=long_description,
+    install_requires=requirements,
+    dependency_links=dependencies,
+    packages=packages,
+    project_urls=project_urls,
+    classifiers=classifiers,
     version=version,
 )
