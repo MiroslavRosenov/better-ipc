@@ -47,7 +47,7 @@ setuptools.setup(
     author_email="miroslav.rosenov39@gmail.com",
     classifiers=classifiers,
     description="A high-performance inter-process communication library designed to work with the latest version of discord.py",
-    long_description=open("README.md").read(),
+    long_description=open("README.md").read().encode("UTF-8"),
     install_requires=requirements,
     dependency_links=dependencies,
     license="Apache Software License",
