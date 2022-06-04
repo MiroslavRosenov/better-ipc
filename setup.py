@@ -30,8 +30,8 @@ packages = [
 ]
 
 project_urls = {
-    "Source": "https://github.com/MiroslavRosenov/discord-ext-ipc",
-    "Issue Tracker": "https://github.com/MiroslavRosenov/discord-ext-ipc/issues",
+    "Source": "https://github.com/MiroslavRosenov/better-ipc",
+    "Issue Tracker": "https://github.com/MiroslavRosenov/better-ipc/issues",
 }
 
 _version_regex = r"^version = ('|\")((?:[0-9]+\.)*[0-9]+(?:\.?([a-z]+)(?:\.?[0-9])?)?)\1$"
@@ -42,7 +42,7 @@ with open("discord/ext/ipc/__init__.py") as stream:
 version = match.group(2)
 
 setuptools.setup(
-    name="discord-ext-ipc",
+    name="better-ipc",
     author="DaPandaOfficial",
     classifiers=classifiers,
     description="A high-performance inter-process communication library designed to work with the latest version of discord.py",
@@ -52,6 +52,6 @@ setuptools.setup(
     packages=packages,
     project_urls=project_urls,
     python_requires=">=3.8.0",
-    url="https://github.com/MiroslavRosenov/discord-ext-ipc",
+    url="https://github.com/MiroslavRosenov/better-ipc",
     version=version,
 )
