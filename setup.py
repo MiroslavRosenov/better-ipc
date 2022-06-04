@@ -1,3 +1,5 @@
+import ast
+import re
 import setuptools
 from pathlib import Path
 
@@ -9,6 +11,11 @@ with open("requirements.txt") as stream:
 this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text()
 
+_version_re = re.compile(r'__version__\s+=\s+(.*)')
+
+with open('discord/ext/ipc/__init__.py', 'rb') as f:
+    version = str(ast.literal_eval(_version_re.search(f.read().decode('utf-8')).group(1)))
+
 setuptools.setup(
     author="DaPandaOfficial",
     python_requires=">=3.8.0",
@@ -16,7 +23,6 @@ setuptools.setup(
     author_email="miroslav.rosenov39@gmail.com",
     long_description_content_type="text/markdown",
     url="https://github.com/MiroslavRosenov/better-ipc",
-    download_url="https://github.com/MiroslavRosenov/better-ipc/archive/refs/tags/1.0.tar.gz",
     description="A high-performance inter-process communication library designed to work with the latest version of discord.py",
     packages=[
         "discord.ext.ipc"
@@ -42,10 +48,10 @@ setuptools.setup(
         "Topic :: Software Development :: Libraries",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
-    keywords=["better_ipc", "ipc", "python", "discord.py"],
+    keywords=["better-ipc", "ipc", "python", "discord.py"],
     long_description=long_description,
     install_requires=requirements,
     dependencies=dependencies,
     name="better-ipc",
-    version="1.0.3",
+    version=version,
 )
