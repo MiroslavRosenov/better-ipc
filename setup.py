@@ -19,7 +19,9 @@ setuptools.setup(
     url="https://github.com/MiroslavRosenov/better-ipc",
     download_url="https://github.com/MiroslavRosenov/better-ipc/archive/refs/tags/1.0.tar.gz",
     description="A high-performance inter-process communication library designed to work with the latest version of discord.py",
-    packages=setuptools.find_packages(),
+    packages=[
+        "discord.ext.ipc"
+    ],
     project_urls={
         "Source": "https://github.com/MiroslavRosenov/better-ipc",
         "Issue Tracker": "https://github.com/MiroslavRosenov/better-ipc/issues",
