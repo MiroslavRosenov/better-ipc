@@ -1,5 +1,6 @@
 # Better IPC
 
+![](https://img.shields.io/pypi/v/better-ipc.svg)
 ![](https://img.shields.io/pypi/pyversions/better-ipc.svg)
 ![](https://img.shields.io/github/last-commit/MiroslavRosenov/better-ipc)
 ![](https://img.shields.io/github/license/MiroslavRosenov/better-ipc)
