@@ -46,6 +46,6 @@ setuptools.setup(
     long_description=long_description,
     install_requires=requirements,
     dependencies=dependencies,
-    name="DaPandaOfficial",
+    name="better-ipc",
     version="1.0.2",
 )
