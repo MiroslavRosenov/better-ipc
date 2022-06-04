@@ -14,7 +14,8 @@ def route(name: Optional[str] = None):
     |method|
     
     Used to register a coroutine as an endpoint when you don't have
-    access to an instance of :class:`.Server`
+    access to an instance of class:`~discord.ext.ipc.Server`
+
     Parameters
     ----------
     name: :str:`str`
@@ -50,6 +51,7 @@ class Server:
         A custom logger for all event. Default on is `discord.ext.ipc`
     """
 
+    endpoints = {}
     def __init__(
         self, 
         bot: Bot, 
@@ -68,10 +70,9 @@ class Server:
         self.multicast_port = multicast_port
         self.logger = logger
 
-    endpoints = {}
-    _server = None
-    _multicast_server = None
-    _cls = None
+        self._server = None
+        self._multicast_server = None
+        self._cls = None
 
     def start(self, cls) -> None:
         """
@@ -102,8 +103,6 @@ class Server:
 
         Used to register a coroutine as an endpoint when you have
         access to an instance of :class:`~discord.ext.ipc.Server`
-        
-        Please note that the endpoints are registered in :function:`update_endpoints`
 
         Parameters
         ----------
@@ -111,7 +110,7 @@ class Server:
             The endpoint name. If not provided the method name will be used.
         """
         def decorator(func):
-            Server.endpoints[name or func.__name__] = func
+            self.endpoints[name or func.__name__] = func
         return decorator
 
     async def handle_accept(self, request: Request) -> None:

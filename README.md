@@ -43,9 +43,11 @@ class Routes(commands.Cog):
         if not hasattr(bot, "ipc"):
             bot.ipc = ipc.Server(self.bot, host="127.0.0.1", port=2300, secret_key="your_secret_key_here")
             bot.ipc.start(self)
+
     @commands.Cog.listener()
     async def on_ipc_ready(self):
         logging.info("Ipc is ready")
+    
     @commands.Cog.listener()
     async def on_ipc_error(self, endpoint: str, error: IPCError):
         logging.error(endpoint, "raised", error, file=sys.stderr)
