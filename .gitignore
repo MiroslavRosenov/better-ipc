@@ -4,8 +4,10 @@ __pycache__/
 # python package-index
 build/
 dist/
+git/
+better_ipc.egg-info/
+
 *.egg-info/
-
-
-.git
 .pypirc
+
+
