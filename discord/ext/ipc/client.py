@@ -1,9 +1,9 @@
 from __future__ import annotations
 import asyncio
 import logging
-import typing
 import aiohttp
 
+from aiohttp import ClientConnectorError
 from typing import Optional, Union, Any
 from aiohttp import ClientWebSocketResponse
 from discord.ext.ipc.errors import *
@@ -25,7 +25,6 @@ class Client:
     secret_key: Union[str, bytes]
         The secret key for your IPC server. Must match the server secret_key or requests will not go ahead, defaults to None
     """
-
     def __init__(
         self,
         host: str = "127.0.0.1",
@@ -33,7 +32,6 @@ class Client:
         multicast_port: int = 20000,
         secret_key: Union[str, bytes] = None
     ):
-        """Constructor"""
         self.host = host
         self.port = port
         self.secret_key = secret_key
@@ -52,6 +50,8 @@ class Client:
 
     async def init_sock(self) -> ClientWebSocketResponse:
         """
+        |coro|
+
         Attempts to connect to the server
 
         Returns
@@ -60,7 +60,6 @@ class Client:
             The websocket connection to the server
         """
         self.logger.info("Initiating WebSocket connection.")
-        self.session = aiohttp.ClientSession()
 
         if not self.port:
             self.logger.debug("No port was provided - initiating multicast connection at %s.", self.url,)
@@ -173,19 +172,24 @@ class Client:
         logger: `logging.Logger`
             A custom logger for all event. Default on is `discord.ext.ipc`
         """
-        if not loop:
-            loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        if not logger:
-            logger = log
-        
-        self.loop = loop
-        self.logger = logger
+        self.session = aiohttp.ClientSession()
+        self.loop = loop or asyncio.new_event_loop()
+        self.logger = logger or log
         self.lock = asyncio.Lock()
-        await self.init_sock()
+        asyncio.set_event_loop(self.loop)
 
-        return self
+        try:
+            connection = await self.session.ws_connect(self.url, autoping=False)
+        except ClientConnectorError:
+            self.logger.critical(f"Failed to start the IPC, connection to {self.url!r} has failed!")
+            return None
+        except Exception as e:
+            self.logger.critical("Failed to start the IPC, unexpected error occured!", exc_info=e)
+            return None
+        else:
+            await connection.close(code=200)
+            self.started = True
+            return self
     
     async def close(self) -> None:
         """

@@ -1,5 +1,5 @@
-from discord import ClientException
 from typing import Tuple
+from discord import ClientException
 
 class IPCError(ClientException):
     """Base IPC exception class"""

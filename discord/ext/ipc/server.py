@@ -3,8 +3,9 @@ import aiohttp.web
 
 from typing import Optional
 from aiohttp.web import Application, TCPSite, AppRunner, Request
+from discord.ext.commands import Bot
 from discord.ext.ipc.errors import *
-from discord.ext.commands import Bot, Cog
+from discord.ext.ipc.helpers import IpcServerResponse
 
 log = logging.getLogger(__name__)
 
@@ -21,35 +22,13 @@ def route(name: Optional[str] = None):
         used.
     """
     def decorator(func):
-        if not name:
-            Server.endpoints[func.__name__] = func
-        else:
-            Server.endpoints[name] = func
-        return func
+        Server.endpoints[name or func.__name__] = func
     return decorator
-
-class IpcServerResponse:
-    def __init__(self, data):
-        self._json = data
-        self.length = len(data)
-
-        self.endpoint = data["endpoint"]
-
-        for key, value in data["data"].items():
-            setattr(self, key, value)
-
-    def to_json(self):
-        return self._json
-
-    def __repr__(self):
-        return "<IpcServerResponse length={0.length}>".format(self)
-
-    def __str__(self):
-        return self.__repr__()
 
 class Server:
     """ 
     |class|
+    
     The IPC server. Usually used on the bot process for receiving
     requests from the client.
     Attributes
@@ -94,7 +73,7 @@ class Server:
     _multicast_server = None
     _cls = None
 
-    def start(self, cls: Cog) -> None:
+    def start(self, cls) -> None:
         """
         |method|
         
@@ -106,7 +85,7 @@ class Server:
         """
         self._server = Application()
         self._server.router.add_route("GET", "/", self.handle_accept)
-        self._cls = cls.__cog_name__
+        self._cls = cls
 
         if self.do_multicast:
             self._multicast_server = Application()
@@ -131,13 +110,8 @@ class Server:
         name: `str`
             The endpoint name. If not provided the method name will be used.
         """
-
         def decorator(func):
-            if not name:
-                self.endpoints[func.__name__] = func
-            else:
-                self.endpoints[name] = func
-            return func
+            Server.endpoints[name or func.__name__] = func
         return decorator
 
     async def handle_accept(self, request: Request) -> None:
