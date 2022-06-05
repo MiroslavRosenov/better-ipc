@@ -48,7 +48,7 @@ class Server:
     multicast_port: :int:`int`
         The port to run the multicasting server on. Defaults to 20000
     logger: `logging.Logger`
-        A custom logger for all event. Default on is `discord.ext.ipc`
+        A custom logger for all event. Default one is `discord.ext.ipc`
     """
 
     endpoints = {}
@@ -125,15 +125,17 @@ class Server:
         request: :class:`~aiohttp.web.Request`
             The request made by the client, parsed by aiohttp.
         """
-        self.logger.info("Handing new IPC request")
+        self.logger.debug("Handing new IPC request")
 
         websocket = aiohttp.web.WebSocketResponse()
+        websocket._loop = self.bot.loop
+
         await websocket.prepare(request)
 
         async for message in websocket:
             request = message.json()
 
-            self.logger.debug("IPC Server < %r", request)
+            self.logger.debug("Receiving request: %r", request)
 
             endpoint = request.get("endpoint")
             headers = request.get("headers")
@@ -180,14 +182,17 @@ class Server:
                             "error": str(error),
                             "code": 500,
                         }
+                    else:
+                        self.logger.debug(response)
 
             try:
-                if not response: response = {}
+                response = response or {} 
+                    
                 if not response.get("code"):
                     response["code"] = 200
 
                 await websocket.send_json(response)
-                self.logger.debug("IPC Server > %r", response)
+                self.logger.debug("Sending response: %r", response)
             except TypeError as error:
                 if str(error).startswith("Object of type") and str(error).endswith("is not JSON serializable"):
                     error_response = (
@@ -204,14 +209,18 @@ class Server:
                     }
 
                     await websocket.send_json(response)
-                    self.logger.debug("IPC Server > %r", response)
+                    self.logger.debug("Sending Response: %r", response)
 
                     raise JSONEncodeError(error_response)
+            except Exception:
+                raise IPCError("Could not send JSON data to websocket!")
 
     async def handle_multicast(self, request: Request) -> None:
         """
         |coro|
+
         Handles multicasting websocket requests from the client.
+        
         Parameters
         ----------
         request: :class:`~aiohttp.web.Request`
@@ -221,7 +230,7 @@ class Server:
         websocket = aiohttp.web.WebSocketResponse()
         await websocket.prepare(request)
 
-        async for message in websocket:
+        async for message in websocket: #TODO: make this work properly
             request = message.json()
 
             log.debug("Multicast Server < %r", request)
@@ -264,6 +273,7 @@ class Server:
     async def stop(self) -> None:
         """
         |coro|
+
         
         Stops both the IPC webserver
         """
