@@ -273,11 +273,7 @@ class Server:
     async def stop(self) -> None:
         """
         |coro|
-<<<<<<< HEAD
 
-=======
-        
->>>>>>> 51fb09a4f47e0e64c07212c72133275d83528dc3
         Stops both the IPC webserver
         """
         self.logger.info('Stopping up the IPC webserver')
