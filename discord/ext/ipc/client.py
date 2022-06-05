@@ -5,7 +5,7 @@ import aiohttp
 
 from aiohttp import ClientConnectorError
 from typing import Optional, Union, Any
-from aiohttp import ClientWebSocketResponse
+from aiohttp import ClientWebSocketResponse, WSCloseCode
 from discord.ext.ipc.errors import *
 
 log = logging.getLogger(__name__)
@@ -40,7 +40,6 @@ class Client:
         self.loop = None
         self.logger = None
         self.session = None
-        self.websocket = None
         self.multicast = None
         self.closed = False
 
@@ -59,37 +58,58 @@ class Client:
         :class: `~aiohttp.ClientWebSocketResponse`
             The websocket connection to the server
         """
-        self.logger.info("Initiating WebSocket connection.")
+        self.logger.info("Initiating WebSocket connection")
 
         if not self.port:
             self.logger.debug("No port was provided - initiating multicast connection at %s.", self.url,)
             self.multicast = await self.session.ws_connect(self.url, autoping=False)
 
-            payload = {"connect": True, "headers": {"Authorization": self.secret_key}}
+            payload = {
+                "connect": True, 
+                "headers": {"Authorization": self.secret_key}
+            }
             self.logger.debug("Multicast Server < %r", payload)
 
             await self.multicast.send_json(payload)
             recv = await self.multicast.receive()
 
-            self.logger.debug("Multicast Server > %r", recv)
+            self.logger.debug("Multicast server response: %r", recv)
 
             if recv.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED):
-                self.logger.error(
-                    "WebSocket connection unexpectedly closed. Multicast Server is unreachable."
-                )
+                self.logger.error("WebSocket connection unexpectedly closed. Multicast Server is unreachable.")
                 raise NotConnected("Multicast server connection failed.")
 
             port_data = recv.json()
             self.port = port_data["port"]
 
-        self.websocket = await self.session.ws_connect(self.url, autoping=False, autoclose=False)
         self.logger.info("Client connected to %s", self.url)
+        return await self.session.ws_connect(self.url, autoping=False, autoclose=False)
 
-        return self.websocket
+    async def retry(
+        self,
+        endpoint: str,
+        **kwargs
+    ) -> WSCloseCode:
+        websocket = await self.init_sock()
+
+        payload = {
+            "endpoint": endpoint,
+            "data": kwargs,
+            "headers": {"Authorization": self.secret_key},
+        }
+        try:
+            await websocket.send_json(payload)
+        except Exception as e:
+            self.logger.error("Failed to send payload", exc_info=e)
+            return WSCloseCode.INTERNAL_ERROR
+        else:
+            await websocket.close(code=WSCloseCode.OK)
+            return WSCloseCode.OK
 
     async def request(
         self,
-        endpoint: str, **kwargs
+        endpoint: str,
+        **kwargs
     ) -> Optional[Any]:
         """
         |coro|
@@ -103,13 +123,14 @@ class Client:
         **kwargs
             The data to send to the endpoint
         """
-        if not self.session:
-            raise RuntimeError("The IPC has not been started yet!")
+        if not self.started:
+            raise IPCError("Session not started yet!")
 
         if self.closed:
-            raise RuntimeError("The IPC is currently closed!")
+            raise IPCError("Session closed!")
 
-        self.logger.info("Requesting IPC Server for %r with %r", endpoint, kwargs)
+        self.logger.debug("Sending request to %r with %r", endpoint, kwargs)
+        websocket = await self.init_sock()
         
         payload = {
             "endpoint": endpoint,
@@ -117,42 +138,47 @@ class Client:
             "headers": {"Authorization": self.secret_key},
         }
 
+        self.logger.debug("Sending playload: %r", payload)
+
         try:
-            await self.websocket.send_json(payload)
+            await websocket.send_json(payload)
         except ConnectionResetError:
-            self.logger.error("Cannot write to closing transport, attempting reconnection in 5 seconds.")
-            await self.session.close()
-            await asyncio.sleep(5)
-            await self.init_sock()
+            self.logger.error("Cannot write to closing transport, restart the client in 3 seconds. (Could be raised if the client is on different machine that the server)")
+            await websocket.close(code=WSCloseCode.INTERNAL_ERROR)
+            
+            await self.close()
+            await self.start(self.loop, self.logger)
 
             return await self.request(endpoint, **kwargs)
-
-        self.logger.debug("Client > %r", payload)
 
         async with self.lock:
-            recv = await self.websocket.receive()
+            recv = await websocket.receive()
 
-        self.logger.debug("Client < %r", recv)
+        self.logger.debug("Receiving response: %r", recv)
 
-        if recv.type == aiohttp.WSMsgType.PING:
-            self.logger.info("Received request to PING")
-            await self.websocket.ping()
-            return await self.request(endpoint, **kwargs)
+        if recv.type == aiohttp.WSMsgType.CLOSED:
+            self.logger.error("WebSocket connection unexpectedly closed, attempting to retry in 3 seconds.")
+            await asyncio.sleep(3)
+            if await self.retry(endpoint, **kwargs) == WSCloseCode.INTERNAL_ERROR:
+                self.logger.error("Could not do perform the rquest after reattempt")
+        
+        elif recv.type == aiohttp.WSMsgType.PING:
+            self.logger.debug("Received request to PING")
+            await websocket.ping()
+            await self.retry(endpoint, **kwargs)
 
         elif recv.type == aiohttp.WSMsgType.PONG:
-            self.logger.info("Received PONG")
-            return await self.request(endpoint, **kwargs)
+            self.logger.debug("Received PONG")
+            await self.retry(endpoint, **kwargs)
 
-        elif recv.type == aiohttp.WSMsgType.CLOSED:
-            self.logger.error("WebSocket connection unexpectedly closed, attempting reconnection in 5 seconds.")
-            await self.session.close()
-            await asyncio.sleep(5)
-            await self.init_sock()
+        elif recv.type == aiohttp.WSMsgType.ERROR:
+            self.logger.error("Received WSMsgType of ERROR, intead of TEXT/BYTES!")
 
-            return await self.request(endpoint, **kwargs)
-        
         else:
-            return recv.json()
+            await websocket.close()
+            data = recv.json()
+            if data["code"] != 200: self.logger.warning("Received code %r insted of usual 200", data["code"])
+            return data
 
     async def start(
         self, 
@@ -172,22 +198,23 @@ class Client:
         logger: `logging.Logger`
             A custom logger for all event. Default on is `discord.ext.ipc`
         """
-        self.session = aiohttp.ClientSession()
         self.loop = loop or asyncio.new_event_loop()
         self.logger = logger or log
         self.lock = asyncio.Lock()
+        self.session = aiohttp.ClientSession(loop=loop)
         asyncio.set_event_loop(self.loop)
 
         try:
             connection = await self.session.ws_connect(self.url, autoping=False)
-        except ClientConnectorError:
-            self.logger.critical(f"Failed to start the IPC, connection to {self.url!r} has failed!")
+        except ClientConnectorError as e:
+            self.logger.critical(f"Failed to start the IPC, connection to {self.url!r} has failed!", exc_info=e)
             return None
         except Exception as e:
             self.logger.critical("Failed to start the IPC, unexpected error occured!", exc_info=e)
             return None
         else:
-            await connection.close(code=200)
+            await connection.close()
+            self.closed = False
             self.started = True
             return self
     
@@ -197,7 +224,6 @@ class Client:
 
         Stops the IPC session
         """
-        if self.session:
-            await self.session.close()
+        if self.session: await self.session.close()
         self.closed = True
     

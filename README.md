@@ -13,19 +13,21 @@ A high-performance inter-process communication library designed to work with the
 This library is heavily based on [discod-ext-ipc](https://github.com/Ext-Creators/discord-ext-ipc), which is no longer maintained.
 
 # Installation
-> Stable version
+> ### Stable version
 ```shell
 python -m pip install -U better-ipc
 ```
-> Development version
+> ### Development version
 ```shell
 python -m pip install -U git+https://github.com/MiroslavRosenov/better-ipc
 ```
 # Support
 
-You can join our support server [here](https://discord.gg/Rpg7zjFYsh)
+You can join the support server [here](https://discord.gg/Rpg7zjFYsh)
 
 # Examples
+
+### **For best performance run both the server and the client on the same machine**
 
 ### Inside your Discord client (with decorator)
 ```python
