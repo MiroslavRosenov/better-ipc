@@ -5,7 +5,7 @@ from typing import Optional
 from aiohttp.web import Application, TCPSite, AppRunner, Request
 from discord.ext.commands import Bot, Cog
 from discord.ext.ipc.errors import *
-from discord.ext.ipc.helpers import ServerRequest
+from discord.ext.ipc.objects import ServerRequest
 
 log = logging.getLogger(__name__)
 
