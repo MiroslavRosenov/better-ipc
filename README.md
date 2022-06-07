@@ -78,7 +78,7 @@ class Routes(commands.Cog):
         self.bot = bot
         if not hasattr(bot, "ipc"):
             bot.ipc = ipc.Server(self.bot, host="127.0.0.1", port=2300, secret_key="your_secret_key_here")
-            bot.ipc.start(self)
+            bot.ipc.start()
         for name, function in inspect.getmembers(self):
             if name.startswith("get_"): # ATTENTION: Every function that stats with `get_` will be registered as endpoint
                 bot.ipc.endpoints[name] = function
