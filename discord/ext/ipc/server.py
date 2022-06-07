@@ -5,7 +5,8 @@ from typing import Optional
 from aiohttp.web import Application, TCPSite, AppRunner, Request
 from discord.ext.commands import Bot, Cog
 from discord.ext.ipc.errors import *
-from discord.ext.ipc.helpers import IpcServerResponse
+from discord.ext.ipc.helpers import ServerRequest
+from discord.utils import get
 
 log = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ def route(name: Optional[str] = None):
     """
     def decorator(func):
         Server.endpoints[name or func.__name__] = func
+        return func
     return decorator
 
 class Server:
@@ -69,32 +71,26 @@ class Server:
         self.do_multicast = do_multicast
         self.multicast_port = multicast_port
         self.logger = logger
-
+        self.loop = bot.loop
         self._server = None
         self._multicast_server = None
-        self._cls = None
 
-    def start(self, cls: Cog) -> None:
+    def start(self) -> None:
         """
         |method|
         
         Starts the IPC server
 
-        Parameters
-        ----------
-        cls: `~discord.ext.commands.Cog`
-            The Cog where all the routes are located.
         """
         self._server = Application()
-        self._server.router.add_route("GET", "/", self.handle_accept)
-        self._cls = cls.__cog_name__
+        self._server.router.add_route("GET", "/", self.handle_request)
 
         if self.do_multicast:
             self._multicast_server = Application()
             self._multicast_server.router.add_route("GET", "/", self.handle_multicast)
-            self.bot.loop.create_task(self.setup(self._multicast_server, self.multicast_port))
-
-        self.bot.loop.create_task(self.setup(self._server, self.port))
+            self.loop.create_task(self.setup(self._multicast_server, self.multicast_port))
+        
+        self.loop.create_task(self.setup(self._server, self.port))
         self.bot.dispatch("ipc_ready")
         self.logger.info("The IPC server is ready")
 
@@ -114,11 +110,11 @@ class Server:
             self.endpoints[name or func.__name__] = func
         return decorator
 
-    async def handle_accept(self, request: Request) -> None:
+    async def handle_request(self, request: Request) -> None:
         """
         |coro|
 
-        Handles websocket requests from the client process.
+        Handles websocket requests from the client process
 
         Parameters
         ----------
@@ -128,7 +124,7 @@ class Server:
         self.logger.debug("Handing new IPC request")
 
         websocket = aiohttp.web.WebSocketResponse()
-        websocket._loop = self.bot.loop
+        websocket._loop = self.loop
 
         await websocket.prepare(request)
 
@@ -140,30 +136,54 @@ class Server:
             endpoint = request.get("endpoint")
             headers = request.get("headers")
 
+            if not (authorization := headers.get("Authorization")):
+                self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (no token provided))"))
+                response = {
+                    "error": "Received unauthorized request (no token provided)", 
+                    "code": 403
+                }
+
+            elif authorization != self.secret_key:
+                self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (invalid token provided)"))
+                response = {
+                    "error": "Received unauthorized request (invalid token provided)", 
+                    "code": 403
+                }
+
             if not headers or headers.get("Authorization") != self.secret_key:
-                self.bot.dispatch("ipc_error", endpoint, Exception("Received unauthorized request (Invalid or no token provided)."))
+                self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (Invalid or no token provided)"))
                 response = {
                     "error": "Received unauthorized request (invalid or no token provided).", 
                     "code": 403
                 }
             else:
-                if not endpoint or endpoint not in self.endpoints:
-                    self.bot.dispatch("ipc_error", endpoint, Exception("Received invalid request (invalid or no endpoint given)."))
+                if not endpoint:
+                    self.bot.dispatch("ipc_error", endpoint, IPCError("Received invalid request (no endpoint provided)"))
                     response = {
-                        "error": "Received invalid request (invalid or no endpoint given).",
-                        "code": 400
+                        "error": "Received invalid request (no endpoint provided)",
+                        "code": 404
+                    }
+
+                elif endpoint not in self.endpoints:
+                    self.bot.dispatch("ipc_error", endpoint, IPCError("Received invalid request (invalid endpoint provided)"))
+                    response = {
+                        "error": "Received invalid request (invalid endpoint provided)",
+                        "code": 404
                     }
                 else:
-                    server_response = IpcServerResponse(request)
+                    server_response = ServerRequest(request)
+                    attempted_cls = None
 
-                    try:
-                        if (attempted_cls := self.bot.cogs.get(self.endpoints[endpoint].__qualname__.split(".")[0])):
-                            arguments = (attempted_cls, server_response)
-                        else:
-                            guaranteed_cls = self.bot.cogs.get(self._cls)
-                            arguments = (guaranteed_cls, server_response)
-                    except AttributeError:
-                        raise IPCError("Missing CLS attribute")
+                    for cog in [{cog: [x for x in cog.__dir__() if not x.startswith("__")]} for cog in self.bot.cogs.values()]:
+                        for cog, func in cog.items():
+                            if self.endpoints[endpoint].__name__ in func:
+                                attempted_cls = cog
+                        
+                    if attempted_cls:
+                        arguments = (attempted_cls, server_response)
+                    else:
+                        # CLient support
+                        arguments = (server_response,)
 
                     self.logger.debug(arguments)
 
@@ -171,9 +191,7 @@ class Server:
                         response = await self.endpoints[endpoint](*arguments)
                     except Exception as error:
                         self.logger.error(
-                            "Received error while executing %r with %r",
-                            endpoint,
-                            request,
+                            "Received error while executing %r with %r", endpoint, request,
                             exc_info=error
                         )
                         self.bot.dispatch("ipc_error", endpoint, error)
@@ -201,7 +219,7 @@ class Server:
                         "please only send the data you need."
                     )
 
-                    self.bot.dispatch("ipc_error", endpoint, Exception(error_response))
+                    self.bot.dispatch("ipc_error", endpoint, IPCError(error_response))
 
                     response = {
                         "error": error_response, 
@@ -219,37 +237,16 @@ class Server:
         """
         |coro|
 
-        Handles multicasting websocket requests from the client.
+        Handles websocket requests at the same time
         
         Parameters
         ----------
         request: :class:`~aiohttp.web.Request`
             The request made by the client, parsed by aiohttp.
         """
-        self.logger.info("Initiating Multicast Server.")
-        websocket = aiohttp.web.WebSocketResponse()
-        await websocket.prepare(request)
+        self.loop.create_task(self.handle_request(request))
 
-        async for message in websocket: #TODO: make this work properly
-            request = message.json()
-
-            log.debug("Multicast Server < %r", request)
-
-            headers = request.get("headers")
-
-            if not headers or headers.get("Authorization") != self.secret_key:
-                response = {"error": "Invalid or no token provided.", "code": 403}
-            else:
-                response = {
-                    "message": "Connection success",
-                    "port": self.port,
-                    "code": 200,
-                }
-
-            self.logger.debug("Multicast Server > %r", response)
-            await websocket.send_json(response)
-
-    async def setup(self, application: Application, port: int) -> None:
+    async def setup(self, application: Application, port: int, ) -> None:
         """
         |coro|
 
@@ -267,7 +264,7 @@ class Server:
         await self._runner.setup()
 
         self.logger.debug('Starting the IPC webserver')
-        self._webserver = _webserver = TCPSite(self._runner, self.host, port)
+        _webserver = TCPSite(self._runner, self.host, port)
         await _webserver.start()
 
     async def stop(self) -> None:
