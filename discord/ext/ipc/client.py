@@ -1,18 +1,22 @@
 from __future__ import annotations
+
 import asyncio
 import logging
-import aiohttp
-
-from aiohttp import ClientConnectorError
 from typing import Optional, Union, Any
-from aiohttp import ClientWebSocketResponse, WSCloseCode
+
+from aiohttp import (
+    ClientWebSocketResponse, 
+    ClientConnectorError,
+    ClientSession,
+    WSCloseCode,
+    WsMsgType,
+)
 from discord.ext.ipc.errors import *
 
 log = logging.getLogger(__name__)
 
 class Client:
-    """
-    |class|
+    """|class|
     
     Handles webserver side requests to the bot process.
 
@@ -30,8 +34,8 @@ class Client:
         host: str = "127.0.0.1",
         port: Optional[int] = None,
         multicast_port: int = 20000,
-        secret_key: Union[str, bytes] = None
-    ):
+        secret_key: Union[str, bytes, None] = None,
+    ) -> None:
         self.host = host
         self.port = port
         self.secret_key = secret_key
@@ -48,8 +52,7 @@ class Client:
         return f"ws://{self.host}:{self.port if self.port else self.multicast_port}"
 
     async def init_sock(self) -> ClientWebSocketResponse:
-        """
-        |coro|
+        """|coro|
 
         Attempts to connect to the server
 
@@ -75,7 +78,7 @@ class Client:
 
             self.logger.debug("Multicast server response: %r", recv)
 
-            if recv.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED):
+            if recv.type in (WSMsgType.CLOSE, WSMsgType.CLOSED):
                 self.logger.error("WebSocket connection unexpectedly closed. Multicast Server is unreachable.")
                 raise NotConnected("Multicast server connection failed.")
 
@@ -88,7 +91,7 @@ class Client:
     async def retry(
         self,
         endpoint: str,
-        **kwargs
+        **kwargs: Any,
     ) -> WSCloseCode:
         websocket = await self.init_sock()
 
@@ -109,10 +112,9 @@ class Client:
     async def request(
         self,
         endpoint: str,
-        **kwargs
+        **kwargs: Any,
     ) -> Optional[Any]:
-        """
-        |coro|
+        """|coro|
 
         Make a request to the IPC server process.
 
@@ -156,37 +158,37 @@ class Client:
 
         self.logger.debug("Receiving response: %r", recv)
 
-        if recv.type == aiohttp.WSMsgType.CLOSED:
+        if recv.type is WSMsgType.CLOSED:
             self.logger.error("WebSocket connection unexpectedly closed, attempting to retry in 3 seconds.")
             await asyncio.sleep(3)
             if await self.retry(endpoint, **kwargs) == WSCloseCode.INTERNAL_ERROR:
                 self.logger.error("Could not do perform the rquest after reattempt")
         
-        elif recv.type == aiohttp.WSMsgType.PING:
+        elif recv.type is WSMsgType.PING:
             self.logger.debug("Received request to PING")
             await websocket.ping()
             await self.retry(endpoint, **kwargs)
 
-        elif recv.type == aiohttp.WSMsgType.PONG:
+        elif recv.type is WSMsgType.PONG:
             self.logger.debug("Received PONG")
             await self.retry(endpoint, **kwargs)
 
-        elif recv.type == aiohttp.WSMsgType.ERROR:
+        elif recv.type is WSMsgType.ERROR:
             self.logger.error("Received WSMsgType of ERROR, intead of TEXT/BYTES!")
 
         else:
             await websocket.close()
             data = recv.json()
-            if data["code"] != 200: self.logger.warning("Received code %r insted of usual 200", data["code"])
+            if data["code"] != 200:
+                self.logger.warning("Received code %r insted of usual 200", data["code"])
             return data
 
     async def start(
         self, 
         loop: Optional[asyncio.AbstractEventLoop] = None,
-        logger: Optional[logging.Logger] = None
+        logger: Optional[logging.Logger] = None,
     ) -> Client:
-        """
-        |coro|
+        """|coro|
 
         Starts the IPC session
 
@@ -198,10 +200,10 @@ class Client:
         logger: `logging.Logger`
             A custom logger for all event. Default on is `discord.ext.ipc`
         """
-        self.loop = loop or asyncio.new_event_loop()
+        self.loop = loop or asyncio.get_running_loop()
         self.logger = logger or log
         self.lock = asyncio.Lock()
-        self.session = aiohttp.ClientSession(loop=loop)
+        self.session = ClientSession()
         asyncio.set_event_loop(self.loop)
 
         try:
@@ -219,11 +221,10 @@ class Client:
             return self
     
     async def close(self) -> None:
-        """
-        |coro|
+        """|coro|
 
         Stops the IPC session
         """
-        if self.session: await self.session.close()
+        if self.session:
+            await self.session.close()
         self.closed = True
-    
