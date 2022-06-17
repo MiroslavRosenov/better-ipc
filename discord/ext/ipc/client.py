@@ -9,7 +9,7 @@ from aiohttp import (
     ClientConnectorError,
     ClientSession,
     WSCloseCode,
-    WsMsgType,
+    WSMsgType,
 )
 from discord.ext.ipc.errors import *
 
