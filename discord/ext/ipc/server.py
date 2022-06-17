@@ -1,17 +1,39 @@
-import logging
-import aiohttp.web
+from __future__ import annotations
 
-from typing import Optional
-from aiohttp.web import Application, TCPSite, AppRunner, Request
+import logging
+from typing import (
+    TYPE_CHECKING, 
+    Optional,
+    Callable,
+    ClassVar,
+    TypeVar,
+    Dict,
+)
+
+from aiohttp.web import (
+    WebSocketResponse, 
+    Application,
+    AppRunner,
+    TCPSite,
+    Request,
+)
 from discord.ext.commands import Bot, Cog
 from discord.ext.ipc.errors import *
 from discord.ext.ipc.objects import ServerRequest
 
+if TYPE_CHECKING:
+    from typing_extensions import ParamSpec, TypeAlias
+    
+    P = ParamSpec('P')
+    T = TypeVar('T')
+    
+    RouteFunc: TypeAlias = Callable[P, T]
+
 log = logging.getLogger(__name__)
 
-def route(name: Optional[str] = None):
-    """
-    |method|
+
+def route(name: Optional[str] = None) -> Callable[[RouteFunc], RouteFunc]:
+    """|method|
     
     Used to register a coroutine as an endpoint when you don't have
     access to an instance of class:`~discord.ext.ipc.Server`
@@ -22,14 +44,13 @@ def route(name: Optional[str] = None):
         The endpoint name. If not provided the method name will be
         used.
     """
-    def decorator(func):
+    def decorator(func: RouteFunc) -> RouteFunc:
         Server.endpoints[name or func.__name__] = func
         return func
     return decorator
 
 class Server:
-    """ 
-    |class|
+    """|class|
     
     The IPC server. Usually used on the bot process for receiving
     requests from the client.
@@ -51,8 +72,8 @@ class Server:
     logger: `logging.Logger`
         A custom logger for all event. Default one is `discord.ext.ipc`
     """
-
-    endpoints = {}
+    endpoints: ClassVar[Dict[str, RouteFunc]] = {}
+    
     def __init__(
         self, 
         bot: Bot, 
@@ -61,8 +82,8 @@ class Server:
         secret_key: str = None, 
         do_multicast: bool = False,
         multicast_port: int = 20000,
-        logger: logging.Logger = log
-    ):
+        logger: logging.Logger = log,
+    ) -> None:
         self.bot = bot
         self.host = host
         self.port = port
@@ -93,9 +114,8 @@ class Server:
         self.bot.dispatch("ipc_ready")
         self.logger.info("The IPC server is ready")
 
-    def route(self, name: Optional[str] = None):
-        """
-        |method|
+    def route(self, name: Optional[str] = None) -> Callable[[RouteFunc], RouteFunc]:
+        """|method|
 
         Used to register a coroutine as an endpoint when you have
         access to an instance of :class:`~discord.ext.ipc.Server`
@@ -105,13 +125,13 @@ class Server:
         name: `str`
             The endpoint name. If not provided the method name will be used.
         """
-        def decorator(func):
+        def decorator(func: RouteFunc) -> RouteFunc:
             self.endpoints[name or func.__name__] = func
+            return func
         return decorator
 
     async def handle_request(self, request: Request) -> None:
-        """
-        |coro|
+        """|coro|
 
         Handles websocket requests from the client process
 
@@ -122,7 +142,7 @@ class Server:
         """
         self.logger.debug("Handing new IPC request")
 
-        websocket = aiohttp.web.WebSocketResponse()
+        websocket = WebSocketResponse()
         websocket._loop = self.loop
 
         await websocket.prepare(request)
@@ -233,8 +253,7 @@ class Server:
                 raise IPCError("Could not send JSON data to websocket!")
 
     async def handle_multicast(self, request: Request) -> None:
-        """
-        |coro|
+        """|coro|
 
         Handles websocket requests at the same time
         
@@ -245,9 +264,8 @@ class Server:
         """
         self.loop.create_task(self.handle_request(request))
 
-    async def setup(self, application: Application, port: int, ) -> None:
-        """
-        |coro|
+    async def setup(self, application: Application, port: int) -> None:
+        """|coro|
 
         This function stats the IPC runner and the IPC webserver
         
@@ -267,8 +285,7 @@ class Server:
         await _webserver.start()
 
     async def stop(self) -> None:
-        """
-        |coro|
+        """|coro|
 
         Stops both the IPC webserver
         """
