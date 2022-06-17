@@ -10,7 +10,7 @@
 
 A high-performance inter-process communication library designed to work with the latest version of [discord.py](https://github.com/Rapptz/discord.py)
 
-This library is heavily based on [discod-ext-ipc](https://github.com/Ext-Creators/discord-ext-ipc), which is no longer maintained.
+This library is heavily based on [discord-ext-ipc](https://github.com/Ext-Creators/discord-ext-ipc), which is no longer maintained.
 
 # Installation
 > ### Stable version
