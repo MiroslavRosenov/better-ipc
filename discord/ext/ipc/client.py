@@ -46,6 +46,7 @@ class Client:
         self.session = None
         self.multicast = None
         self.closed = False
+        self.started = False
 
     @property
     def url(self) -> str:
@@ -202,18 +203,17 @@ class Client:
         """
         self.loop = loop or asyncio.get_running_loop()
         self.logger = logger or log
-        self.lock = asyncio.Lock()
+        self.lock = asyncio.Lock(loop=self.loop)
         self.session = ClientSession()
-        asyncio.set_event_loop(self.loop)
 
         try:
             connection = await self.session.ws_connect(self.url, autoping=False)
         except ClientConnectorError as e:
             self.logger.critical(f"Failed to start the IPC, connection to {self.url!r} has failed!", exc_info=e)
-            return None
+            raise RuntimeError(f"Failed to start the IPC, connection to {self.url!r} has failed!")
         except Exception as e:
             self.logger.critical("Failed to start the IPC, unexpected error occured!", exc_info=e)
-            return None
+            raise RuntimeError(f"Failed to start the IPC, unexpected error occured!")
         else:
             await connection.close()
             self.closed = False
