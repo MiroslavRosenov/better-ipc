@@ -204,7 +204,7 @@ class Client:
         """
         self.loop = loop or asyncio.get_running_loop()
         self.logger = logger or log
-        self.lock = (asyncio.Lock() if int(sys.version_info[0]) >= 3 and int(sys.version_info[0]) >= 10 else asyncio.Lock(loop=self.loop))
+        self.lock = (asyncio.Lock() if int(sys.version_info[0]) >= 3 and int(sys.version_info[1]) >= 10 else asyncio.Lock(loop=self.loop))
         self.session = ClientSession()
 
         try:
