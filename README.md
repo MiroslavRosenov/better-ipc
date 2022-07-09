@@ -54,7 +54,7 @@ class Routes(commands.Cog):
     async def on_ipc_error(self, endpoint: str, error: IPCError):
         logging.error(endpoint, "raised", error, file=sys.stderr)
     
-    @route
+    @route()
     async def get_user_data(self, data):
         user = self.bot.get_user(data.user_id)
         return user._to_minimal_user_json() # THE OUTPUT MUST BE JSON SERIALIZABLE!
