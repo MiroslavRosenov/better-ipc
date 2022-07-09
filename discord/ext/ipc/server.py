@@ -111,7 +111,7 @@ class Server:
             self.loop.create_task(self.setup(self._multicast_server, self.multicast_port))
         
         self.loop.create_task(self.setup(self._server, self.port))
-        self.bot.dispatch("ipc_ready")
+        self.bot.dispatch("on_ipc_ready")
         self.logger.info("The IPC server is ready")
 
     def route(self, name: Optional[str] = None) -> Callable[[RouteFunc], RouteFunc]:
