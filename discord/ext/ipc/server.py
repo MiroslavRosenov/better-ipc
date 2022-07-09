@@ -156,35 +156,35 @@ class Server:
             headers = request.get("headers")
 
             if not (authorization := headers.get("Authorization")):
-                self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (no token provided))"))
+                self.bot.dispatch("on_ipc_error", endpoint, IPCError("Received unauthorized request (no token provided))"))
                 response = {
                     "error": "Received unauthorized request (no token provided)", 
                     "code": 403
                 }
 
             elif authorization != self.secret_key:
-                self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (invalid token provided)"))
+                self.bot.dispatch("on_ipc_error", endpoint, IPCError("Received unauthorized request (invalid token provided)"))
                 response = {
                     "error": "Received unauthorized request (invalid token provided)", 
                     "code": 403
                 }
 
             if not headers or headers.get("Authorization") != self.secret_key:
-                self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (Invalid or no token provided)"))
+                self.bot.dispatch("on_ipc_error", endpoint, IPCError("Received unauthorized request (Invalid or no token provided)"))
                 response = {
                     "error": "Received unauthorized request (invalid or no token provided).", 
                     "code": 403
                 }
             else:
                 if not endpoint:
-                    self.bot.dispatch("ipc_error", endpoint, IPCError("Received invalid request (no endpoint provided)"))
+                    self.bot.dispatch("on_ipc_error", endpoint, IPCError("Received invalid request (no endpoint provided)"))
                     response = {
                         "error": "Received invalid request (no endpoint provided)",
                         "code": 404
                     }
 
                 elif endpoint not in self.endpoints:
-                    self.bot.dispatch("ipc_error", endpoint, IPCError("Received invalid request (invalid endpoint provided)"))
+                    self.bot.dispatch("on_ipc_error", endpoint, IPCError("Received invalid request (invalid endpoint provided)"))
                     response = {
                         "error": "Received invalid request (invalid endpoint provided)",
                         "code": 404
@@ -213,7 +213,7 @@ class Server:
                             "Received error while executing %r with %r", endpoint, request,
                             exc_info=error
                         )
-                        self.bot.dispatch("ipc_error", endpoint, error)
+                        self.bot.dispatch("on_ipc_error", endpoint, error)
 
                         response = {
                             "error": str(error),
@@ -238,7 +238,7 @@ class Server:
                         "please only send the data you need."
                     )
 
-                    self.bot.dispatch("ipc_error", endpoint, IPCError(error_response))
+                    self.bot.dispatch("on_ipc_error", endpoint, IPCError(error_response))
 
                     response = {
                         "error": error_response, 
