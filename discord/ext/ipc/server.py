@@ -286,6 +286,7 @@ class Server:
         self.logger.debug('Starting the IPC webserver')
         _webserver = TCPSite(self._runner, self.host, port)
         await _webserver.start()
+        print('test ok')
 
     async def stop(self) -> None:
         """|coro|
