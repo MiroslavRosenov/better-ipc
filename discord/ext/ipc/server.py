@@ -17,7 +17,7 @@ from aiohttp.web import (
     TCPSite,
     Request,
 )
-from discord.ext.commands import Bot, Cog
+from discord.ext.commands import Bot, Cog, AutoShardedBot
 from discord.ext.ipc.errors import *
 from discord.ext.ipc.objects import ServerRequest
 
@@ -76,7 +76,7 @@ class Server:
     
     def __init__(
         self, 
-        bot: Bot, 
+        bot: Bot or AutoShardedBot, 
         host: str = "127.0.0.1", 
         port: int = 1025,
         secret_key: str = None, 
@@ -87,6 +87,7 @@ class Server:
         self.bot = bot
         self.host = host
         self.port = port
+        self._runner = None
         self.secret_key = secret_key
         self.do_multicast = do_multicast
         self.multicast_port = multicast_port
@@ -294,7 +295,8 @@ class Server:
         """
         self.logger.info('Stopping up the IPC webserver')
         self.logger.debug(self._runner.addresses)
-        await self._webserver.stop()
+        await self._runner.shutdown()
+        await self._runner.cleanup()
 
     async def wait_bot_is_ready(self) -> None:
         await self.bot.wait_until_ready()
