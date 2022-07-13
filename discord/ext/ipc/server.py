@@ -87,6 +87,7 @@ class Server:
         self.bot = bot
         self.host = host
         self.port = port
+        self._runner = None
         self.secret_key = secret_key
         self.do_multicast = do_multicast
         self.multicast_port = multicast_port
@@ -286,7 +287,6 @@ class Server:
         self.logger.debug('Starting the IPC webserver')
         _webserver = TCPSite(self._runner, self.host, port)
         await _webserver.start()
-        print('test ok')
 
     async def stop(self) -> None:
         """|coro|
@@ -295,7 +295,8 @@ class Server:
         """
         self.logger.info('Stopping up the IPC webserver')
         self.logger.debug(self._runner.addresses)
-        await self._webserver.stop()
+        await self._runner.shutdown()
+        await self._runner.cleanup()
 
     async def wait_bot_is_ready(self) -> None:
         await self.bot.wait_until_ready()
