@@ -17,7 +17,7 @@ else:
         )
 
 
-__version__ = "1.0.9"
+__version__ = "1.1.0"
 __title__ = "better-ipc"
 __author__ = "DaPandaOfficial"
 
