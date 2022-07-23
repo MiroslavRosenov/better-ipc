@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import (
     TYPE_CHECKING, 
@@ -8,7 +9,9 @@ from typing import (
     ClassVar,
     TypeVar,
     Dict,
+    Union,
 )
+from aiohttp import WSMessage
 
 from aiohttp.web import (
     WebSocketResponse, 
@@ -17,7 +20,7 @@ from aiohttp.web import (
     TCPSite,
     Request,
 )
-from discord.ext.commands import Bot, Cog, AutoShardedBot
+from discord.ext.commands import Bot, AutoShardedBot
 from discord.ext.ipc.errors import *
 from discord.ext.ipc.objects import ServerRequest
 
@@ -73,10 +76,13 @@ class Server:
         A custom logger for all event. Default one is `discord.ext.ipc`
     """
     endpoints: ClassVar[Dict[str, RouteFunc]] = {}
-    
+    _runner = None
+    _server = None
+    _multicast_server = None
+
     def __init__(
         self, 
-        bot: Bot or AutoShardedBot, 
+        bot: Union[Bot, AutoShardedBot], 
         host: str = "127.0.0.1", 
         port: int = 1025,
         secret_key: str = None, 
@@ -87,14 +93,11 @@ class Server:
         self.bot = bot
         self.host = host
         self.port = port
-        self._runner = None
         self.secret_key = secret_key
         self.do_multicast = do_multicast
         self.multicast_port = multicast_port
         self.logger = logger
-        self.loop = bot.loop
-        self._server = None
-        self._multicast_server = None
+        self.loop = bot.loop 
 
     def start(self) -> None:
         """
@@ -104,7 +107,7 @@ class Server:
 
         """
         self._server = Application()
-        self._server.router.add_route("GET", "/", self.handle_request)
+        self._server.router.add_route("GET", "/", self.accept_request)
 
         if self.do_multicast:
             self._multicast_server = Application()
@@ -112,8 +115,9 @@ class Server:
             self.loop.create_task(self.setup(self._multicast_server, self.multicast_port))
         
         self.loop.create_task(self.setup(self._server, self.port))
-        self.logger.info("The IPC server is ready")
+        
         if self.bot.is_ready():
+            self.logger.info("The IPC server is ready")
             self.bot.dispatch("ipc_ready")
         else:
             self.loop.create_task(self.wait_bot_is_ready())
@@ -134,10 +138,10 @@ class Server:
             return func
         return decorator
 
-    async def handle_request(self, request: Request) -> None:
+    async def accept_request(self, original_request: Request) -> None:
         """|coro|
 
-        Handles websocket requests from the client process
+        Aceepts websocket requests from the client process
 
         Parameters
         ----------
@@ -147,114 +151,18 @@ class Server:
         self.logger.debug("Handing new IPC request")
 
         websocket = WebSocketResponse()
-        websocket._loop = self.loop
+        await websocket.prepare(original_request)
 
-        await websocket.prepare(request)
+        tasks = [self.process_request(websocket, message) async for message in websocket]
 
-        async for message in websocket:
-            request = message.json()
-
-            self.logger.debug("Receiving request: %r", request)
-
-            endpoint = request.get("endpoint")
-            headers = request.get("headers")
-
-            if not (authorization := headers.get("Authorization")):
-                self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (no token provided))"))
-                response = {
-                    "error": "Received unauthorized request (no token provided)", 
-                    "code": 403
-                }
-
-            elif authorization != self.secret_key:
-                self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (invalid token provided)"))
-                response = {
-                    "error": "Received unauthorized request (invalid token provided)", 
-                    "code": 403
-                }
-
-            if not headers or headers.get("Authorization") != self.secret_key:
-                self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (Invalid or no token provided)"))
-                response = {
-                    "error": "Received unauthorized request (invalid or no token provided).", 
-                    "code": 403
-                }
-            else:
-                if not endpoint:
-                    self.bot.dispatch("ipc_error", endpoint, IPCError("Received invalid request (no endpoint provided)"))
-                    response = {
-                        "error": "Received invalid request (no endpoint provided)",
-                        "code": 404
-                    }
-
-                elif endpoint not in self.endpoints:
-                    self.bot.dispatch("ipc_error", endpoint, IPCError("Received invalid request (invalid endpoint provided)"))
-                    response = {
-                        "error": "Received invalid request (invalid endpoint provided)",
-                        "code": 404
-                    }
-                else:
-                    server_response = ServerRequest(request)
-                    attempted_cls = None
-
-                    for cog in [{cog: [x for x in cog.__dir__() if not x.startswith("__")]} for cog in self.bot.cogs.values()]:
-                        for cog, func in cog.items():
-                            if self.endpoints[endpoint].__name__ in func:
-                                attempted_cls = cog
-                        
-                    if attempted_cls:
-                        arguments = (attempted_cls, server_response)
-                    else:
-                        # CLient support
-                        arguments = (server_response,)
-
-                    self.logger.debug(arguments)
-
-                    try:
-                        response = await self.endpoints[endpoint](*arguments)
-                    except Exception as error:
-                        self.logger.error(
-                            "Received error while executing %r with %r", endpoint, request,
-                            exc_info=error
-                        )
-                        self.bot.dispatch("ipc_error", endpoint, error)
-
-                        response = {
-                            "error": str(error),
-                            "code": 500,
-                        }
-                    else:
-                        self.logger.debug(response)
-
-            try:
-                response = response or {} 
-                    
-                if not response.get("code"):
-                    response["code"] = 200
-
-                await websocket.send_json(response)
-                self.logger.debug("Sending response: %r", response)
-            except TypeError as error:
-                if str(error).startswith("Object of type") and str(error).endswith("is not JSON serializable"):
-                    error_response = (
-                        "IPC route returned values which are not able to be sent over sockets."
-                        "If you are trying to send a discord.py object,"
-                        "please only send the data you need."
-                    )
-
-                    self.bot.dispatch("ipc_error", endpoint, IPCError(error_response))
-
-                    response = {
-                        "error": error_response, 
-                        "code": 500
-                    }
-
-                    await websocket.send_json(response)
-                    self.logger.debug("Sending Response: %r", response)
-
-                    raise JSONEncodeError(error_response)
-            except Exception:
-                raise IPCError("Could not send JSON data to websocket!")
+        try:
+            asyncio.gather(*tasks)
+        except Exception:
+            for task in tasks:
+                try:
+                    await task
+                except RuntimeError:
+                    continue
 
     async def handle_multicast(self, request: Request) -> None:
         """|coro|
@@ -266,7 +174,122 @@ class Server:
         request: :class:`~aiohttp.web.Request`
             The request made by the client, parsed by aiohttp.
         """
-        self.loop.create_task(self.handle_request(request))
+        self.loop.create_task(self.process_request(request))
+
+    async def process_request(self, websocket: WebSocketResponse, message: WSMessage) -> None:
+        """|coro|
+
+        Processes requests by the client
+
+        Parameters
+        ----------
+        websocket: :class:`~aiohttp.web.WebSocketResponse`
+            The socket from the request
+        message: :class:`~aiohttp.WSMessage`
+            The message that was send in the request
+        """
+        request = message.json()
+
+        self.logger.debug("Receiving request: %r", request)
+
+        endpoint = request.get("endpoint")
+        headers = request.get("headers")
+
+        if not (authorization := headers.get("Authorization")):
+            self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (no token provided))"))
+            response = {
+                "error": "Received unauthorized request (no token provided)", 
+                "code": 403
+            }
+
+        elif authorization != self.secret_key:
+            self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (invalid token provided)"))
+            response = {
+                "error": "Received unauthorized request (invalid token provided)", 
+                "code": 403
+            }
+
+        if not headers or headers.get("Authorization") != self.secret_key:
+            self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (Invalid or no token provided)"))
+            response = {
+                "error": "Received unauthorized request (invalid or no token provided).", 
+                "code": 403
+            }
+        else:
+            if not endpoint:
+                self.bot.dispatch("ipc_error", endpoint, IPCError("Received invalid request (no endpoint provided)"))
+                response = {
+                    "error": "Received invalid request (no endpoint provided)",
+                    "code": 404
+                }
+
+            elif endpoint not in self.endpoints:
+                self.bot.dispatch("ipc_error", endpoint, IPCError("Received invalid request (invalid endpoint provided)"))
+                response = {
+                    "error": "Received invalid request (invalid endpoint provided)",
+                    "code": 404
+                }
+            else:
+                server_response = ServerRequest(request)
+                attempted_cls = None
+
+                for cog in [{cog: [x for x in cog.__dir__() if not x.startswith("__")]} for cog in self.bot.cogs.values()]:
+                    for cog, func in cog.items():
+                        if self.endpoints[endpoint].__name__ in func:
+                            attempted_cls = cog
+                            break
+                    
+                if attempted_cls:
+                    arguments = (attempted_cls, server_response)
+                else:
+                    # CLient support
+                    arguments = (server_response,)
+
+                self.logger.debug(arguments)
+
+                try:
+                    response = await self.endpoints[endpoint](*arguments)
+                except Exception as error:
+                    self.logger.error(
+                        "Received error while executing %r with %r", endpoint, request,
+                        exc_info=error
+                    )
+                    self.bot.dispatch("ipc_error", endpoint, error)
+
+                    response = {
+                        "error": str(error),
+                        "code": 500,
+                    }
+
+        try:
+            response = response or {} 
+                
+            if not response.get("code"):
+                response["code"] = 200
+
+            await websocket.send_json(response)
+            self.logger.debug("Sending response: %r", response)
+        except TypeError as error:
+            if str(error).startswith("Object of type") and str(error).endswith("is not JSON serializable"):
+                error_response = (
+                    "IPC route returned values which are not able to be sent over sockets."
+                    "If you are trying to send a discord.py object,"
+                    "please only send the data you need."
+                )
+
+                self.bot.dispatch("ipc_error", endpoint, IPCError(error_response))
+
+                response = {
+                    "error": error_response, 
+                    "code": 500
+                }
+
+                await websocket.send_json(response)
+                self.logger.debug("Sending Response: %r", response)
+
+                raise JSONEncodeError(error_response)
+        except Exception:
+            raise IPCError("Could not send JSON data to websocket!")
 
     async def setup(self, application: Application, port: int) -> None:
         """|coro|
@@ -300,4 +323,5 @@ class Server:
 
     async def wait_bot_is_ready(self) -> None:
         await self.bot.wait_until_ready()
+        self.logger.info("The IPC server is ready")
         self.bot.dispatch("ipc_ready")

@@ -30,6 +30,14 @@ class Client:
     secret_key: Union[str, bytes]
         The secret key for your IPC server. Must match the server secret_key or requests will not go ahead, defaults to None
     """
+    lock = None
+    loop = None
+    logger = None
+    session = None
+    multicast = None
+    closed = False
+    started = False
+
     def __init__(
         self,
         host: str = "127.0.0.1",
@@ -39,15 +47,8 @@ class Client:
     ) -> None:
         self.host = host
         self.port = port
-        self.secret_key = secret_key
         self.multicast_port = multicast_port
-        self.lock = None
-        self.loop = None
-        self.logger = None
-        self.session = None
-        self.multicast = None
-        self.closed = False
-        self.started = False
+        self.secret_key = secret_key
 
     @property
     def url(self) -> str:
@@ -147,7 +148,7 @@ class Client:
         try:
             await websocket.send_json(payload)
         except ConnectionResetError:
-            self.logger.error("Cannot write to closing transport, restart the client in 3 seconds. (Could be raised if the client is on different machine that the server)")
+            self.logger.error("Cannot write to closing transport, restarting the connection in 3 seconds. (Could be raised if the client is on different machine that the server)")
             await websocket.close(code=WSCloseCode.INTERNAL_ERROR)
             
             await self.close()
@@ -155,8 +156,7 @@ class Client:
 
             return await self.request(endpoint, **kwargs)
 
-        async with self.lock:
-            recv = await websocket.receive()
+        recv = await websocket.receive()
 
         self.logger.debug("Receiving response: %r", recv)
 
