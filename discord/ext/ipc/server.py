@@ -64,7 +64,7 @@ class Server:
     host: :str:`str`
         The host to run the IPC Server on. Defaults to `127.0.0.1`.
     port: :str:`int`
-        The port to run the IPC Server on. Defaults to 1025.
+        The port to run the IPC Server on. Defaults to `1025`.
     secret_key: :str:`str`
         A secret key. Used for authentication and should be the same as
         your client's secret key.
@@ -153,16 +153,8 @@ class Server:
         websocket = WebSocketResponse()
         await websocket.prepare(original_request)
 
-        tasks = [self.process_request(websocket, message) async for message in websocket]
-
-        try:
-            asyncio.gather(*tasks)
-        except Exception:
-            for task in tasks:
-                try:
-                    await task
-                except RuntimeError:
-                    continue
+        async for message in websocket:
+            asyncio.create_task(self.process_request(websocket, message))
 
     async def handle_multicast(self, request: Request) -> None:
         """|coro|

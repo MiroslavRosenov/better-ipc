@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sys
-from typing import Optional, Union, Any
+
+from discord.ext.ipc.errors import *
+
+from typing import (
+    Optional, 
+    Union, 
+    Any
+)
 
 from aiohttp import (
     ClientWebSocketResponse, 
@@ -12,7 +18,6 @@ from aiohttp import (
     WSCloseCode,
     WSMsgType,
 )
-from discord.ext.ipc.errors import *
 
 log = logging.getLogger(__name__)
 
@@ -26,7 +31,7 @@ class Client:
     host: str
         The IP or host of the IPC server, defaults to `127.0.0.1`
     port: int
-        The port of the IPC server. If not supplied the port will be found automatically, defaults to None
+        The port of the IPC server. Defaults to 1025.
     secret_key: Union[str, bytes]
         The secret key for your IPC server. Must match the server secret_key or requests will not go ahead, defaults to None
     """
@@ -41,18 +46,18 @@ class Client:
     def __init__(
         self,
         host: str = "127.0.0.1",
-        port: Optional[int] = None,
-        multicast_port: int = 20000,
+        port: int = 1025,
+        # multicast_port: int = 20000,
         secret_key: Union[str, bytes, None] = None,
     ) -> None:
         self.host = host
         self.port = port
-        self.multicast_port = multicast_port
+        # self.multicast_port = multicast_port
         self.secret_key = secret_key
 
     @property
     def url(self) -> str:
-        return f"ws://{self.host}:{self.port if self.port else self.multicast_port}"
+        return f"ws://{self.host}:{self.port}"
 
     async def init_sock(self) -> ClientWebSocketResponse:
         """|coro|
@@ -64,31 +69,32 @@ class Client:
         :class: `~aiohttp.ClientWebSocketResponse`
             The websocket connection to the server
         """
-        self.logger.info("Initiating WebSocket connection")
+        self.logger.debug("Initiating WebSocket connection")
 
-        if not self.port:
-            self.logger.debug("No port was provided - initiating multicast connection at %s.", self.url,)
-            self.multicast = await self.session.ws_connect(self.url, autoping=False)
+        #TODO: multicast
+        # if not self.port:
+        #     self.logger.debug("No port was provided - initiating multicast connection at %s.", self.url,)
+        #     self.multicast = await self.session.ws_connect(self.url, autoping=False)
 
-            payload = {
-                "connect": True, 
-                "headers": {"Authorization": self.secret_key}
-            }
-            self.logger.debug("Multicast Server < %r", payload)
+        #     payload = {
+        #         "connect": True, 
+        #         "headers": {"Authorization": self.secret_key}
+        #     }
+        #     self.logger.debug("Multicast Server < %r", payload)
 
-            await self.multicast.send_json(payload)
-            recv = await self.multicast.receive()
+        #     await self.multicast.send_json(payload)
+        #     recv = await self.multicast.receive()
 
-            self.logger.debug("Multicast server response: %r", recv)
+        #     self.logger.debug("Multicast server response: %r", recv)
 
-            if recv.type in (WSMsgType.CLOSE, WSMsgType.CLOSED):
-                self.logger.error("WebSocket connection unexpectedly closed. Multicast Server is unreachable.")
-                raise NotConnected("Multicast server connection failed.")
+        #     if recv.type in (WSMsgType.CLOSE, WSMsgType.CLOSED):
+        #         self.logger.error("WebSocket connection unexpectedly closed. Multicast Server is unreachable.")
+        #         raise NotConnected("Multicast server connection failed.")
 
-            port_data = recv.json()
-            self.port = port_data["port"]
+        #     port_data = recv.json()
+        #     self.port = port_data["port"]
 
-        self.logger.info("Client connected to %s", self.url)
+        self.logger.debug("Client connected to %s", self.url)
         return await self.session.ws_connect(self.url, autoping=False, autoclose=False)
 
     async def retry(
@@ -204,7 +210,6 @@ class Client:
         """
         self.loop = loop or asyncio.get_running_loop()
         self.logger = logger or log
-        self.lock = (asyncio.Lock() if int(sys.version_info[0]) >= 3 and int(sys.version_info[1]) >= 10 else asyncio.Lock(loop=self.loop))
         self.session = ClientSession()
 
         try:
