@@ -226,6 +226,27 @@ class Client:
             self.started = True
             return self
     
+    async def ping(
+            self,
+            loop: Optional[asyncio.AbstractEventLoop] = None,
+    ) -> Client:
+        self.loop = loop or asyncio.get_running_loop()
+        if self.session:
+            return True
+        session = ClientSession()
+        try:
+            connection = await session.ws_connect(self.url, autoping=False)
+        except ClientConnectorError as e:
+            await session.close()
+            return False
+        except Exception as e:
+            await session.close()
+            return False
+        else:
+            await session.close()
+            await connection.close()
+            return True
+    
     async def close(self) -> None:
         """|coro|
 
