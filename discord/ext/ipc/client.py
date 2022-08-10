@@ -187,7 +187,7 @@ class Client:
         else:
             await websocket.close()
             data = recv.json()
-            if data["code"] != 200:
+            if int(data["code"]) != 200:
                 self.logger.warning("Received code %r insted of usual 200", data["code"])
             return data
 
