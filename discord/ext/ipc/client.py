@@ -236,10 +236,10 @@ class Client:
         session = ClientSession()
         try:
             connection = await session.ws_connect(self.url, autoping=False)
-        except ClientConnectorError as e:
+        except ClientConnectorError:
             await session.close()
             return False
-        except Exception as e:
+        except Exception:
             await session.close()
             return False
         else:
