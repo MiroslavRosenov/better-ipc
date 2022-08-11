@@ -25,10 +25,6 @@ class ServerPayload:
         self._data = data
         self.lenght = len(data)
         self.endpoint = data["endpoint"]
-        self.__post_init__()
-
-    def __post_init__(self):
-        pass
 
     def __getitem__(self, __k: str):
         return self._data[__k]
