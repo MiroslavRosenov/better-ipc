@@ -10,6 +10,7 @@ from typing import (
     TypeVar,
     Dict,
     Union,
+    Type,
 )
 from aiohttp import WSMessage
 
@@ -22,7 +23,7 @@ from aiohttp.web import (
 )
 from discord.ext.commands import Bot, AutoShardedBot
 from discord.ext.ipc.errors import *
-from discord.ext.ipc.objects import ServerRequest
+from discord.ext.ipc.objects import ServerPayload
 
 if TYPE_CHECKING:
     from typing_extensions import ParamSpec, TypeAlias
@@ -34,23 +35,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-
-def route(name: Optional[str] = None) -> Callable[[RouteFunc], RouteFunc]:
-    """|method|
-    
-    Used to register a coroutine as an endpoint when you don't have
-    access to an instance of class:`~discord.ext.ipc.Server`
-
-    Parameters
-    ----------
-    name: :str:`str`
-        The endpoint name. If not provided the method name will be
-        used.
-    """
-    def decorator(func: RouteFunc) -> RouteFunc:
-        Server.endpoints[name or func.__name__] = func
-        return func
-    return decorator
 
 class Server:
     """|class|
@@ -75,7 +59,7 @@ class Server:
     logger: `logging.Logger`
         A custom logger for all event. Default one is `discord.ext.ipc`
     """
-    endpoints: ClassVar[Dict[str, RouteFunc]] = {}
+    endpoints: ClassVar[Dict[str, Tuple[RouteFunc, Type[ServerPayload]]]] = {}
     _runner = None
     _server = None
     _multicast_server = None
@@ -98,6 +82,10 @@ class Server:
         self.multicast_port = multicast_port
         self.logger = logger
         self.loop = bot.loop 
+
+    def _get_parent(self, func):
+        cls = func.__qualname__.strip(f".{func.__name__}")
+        return self.bot.cogs.get(cls)
 
     def start(self) -> None:
         """
@@ -122,7 +110,8 @@ class Server:
         else:
             self.loop.create_task(self.wait_bot_is_ready())
 
-    def route(self, name: Optional[str] = None) -> Callable[[RouteFunc], RouteFunc]:
+    @classmethod
+    def route(cls, name: Optional[str] = None) -> Callable[[RouteFunc], RouteFunc]:
         """|method|
 
         Used to register a coroutine as an endpoint when you have
@@ -134,7 +123,14 @@ class Server:
             The endpoint name. If not provided the method name will be used.
         """
         def decorator(func: RouteFunc) -> RouteFunc:
-            self.endpoints[name or func.__name__] = func
+            for cls in func.__annotations__.values():
+                if isinstance(cls, ServerPayload):
+                    payload_cls = cls
+                    break
+            else:
+                payload_cls = ServerPayload
+
+            Server.endpoints[name or func.__name__] = (func, payload_cls)
             return func
         return decorator
 
@@ -222,25 +218,19 @@ class Server:
                     "code": 404
                 }
             else:
-                server_response = ServerRequest(request)
-                attempted_cls = None
-
-                for cog in [{cog: [x for x in cog.__dir__() if not x.startswith("__")]} for cog in self.bot.cogs.values()]:
-                    for cog, func in cog.items():
-                        if self.endpoints[endpoint].__name__ in func:
-                            attempted_cls = cog
-                            break
+                endpoint, payload_cls = Server.endpoints.get(endpoint)
+                attempted_cls = self._get_parent(endpoint)
                     
                 if attempted_cls:
-                    arguments = (attempted_cls, server_response)
+                    arguments = (attempted_cls, payload_cls(request))
                 else:
                     # CLient support
-                    arguments = (server_response,)
+                    arguments = (payload_cls(request),)
 
                 self.logger.debug(arguments)
 
                 try:
-                    response = await self.endpoints[endpoint](*arguments)
+                    response = await endpoint(*arguments)
                 except Exception as error:
                     self.logger.error(
                         "Received error while executing %r with %r", endpoint, request,
