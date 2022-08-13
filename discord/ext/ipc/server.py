@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import warning
 from typing import (
     TYPE_CHECKING, 
     Optional,
@@ -34,6 +35,36 @@ if TYPE_CHECKING:
     RouteFunc: TypeAlias = Callable[P, T]
 
 log = logging.getLogger(__name__)
+
+
+def route(name: Optional[str] = None) -> Callable[[RouteFunc], RouteFunc]:
+    """|method|
+
+    Used to register a coroutine as an endpoint when you have
+    access to an instance of :class:`~discord.ext.ipc.Server`
+
+    Parameters
+    ----------
+    name: `str`
+        The endpoint name. If not provided the method name will be used.
+    """
+    warnings.warn(
+        "This function will be deprecated later "
+        "in the future. Consider using `Server.route`."
+    )
+
+    def decorator(func: RouteFunc) -> RouteFunc:
+        for cls in func.__annotations__.values():
+            if isinstance(cls, ServerPayload):
+                payload_cls = cls
+                break
+        else:
+            payload_cls = ServerPayload
+
+        Server.endpoints[name or func.__name__] = (func, payload_cls)
+        return func
+
+    return decorator
 
 
 class Server:
