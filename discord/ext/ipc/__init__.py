@@ -23,4 +23,5 @@ __author__ = "DaPandaOfficial"
 
 from discord.ext.ipc.client import Client
 from discord.ext.ipc.server import Server
+from discord.ext.ipc.objects import ServerPayload
 from discord.ext.ipc.errors import *
