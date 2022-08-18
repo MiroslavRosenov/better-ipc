@@ -1,8 +1,7 @@
 from typing import Tuple
-from discord import ClientException
 
-class IPCError(ClientException):
-    """Base IPC exception class"""
+class IPCError(Exception):
+    """Common base class for all IPC exceptions"""
     __slots__: Tuple[str, ...] = ()
 
 

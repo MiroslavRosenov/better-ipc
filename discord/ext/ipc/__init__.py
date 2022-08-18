@@ -17,11 +17,11 @@ else:
         )
 
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 __title__ = "better-ipc"
 __author__ = "DaPandaOfficial"
 
-from discord.ext.ipc.client import Client
-from discord.ext.ipc.server import Server
-from discord.ext.ipc.objects import ServerPayload
-from discord.ext.ipc.errors import *
+from .client import Client
+from .server import Server
+from .objects import ServerPayload
+from .errors import *

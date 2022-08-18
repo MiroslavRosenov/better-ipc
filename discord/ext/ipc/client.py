@@ -2,127 +2,125 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
-from discord.ext.ipc.errors import *
+from .errors import *
 
 from typing import (
+    Dict,
     Optional, 
     Union, 
     Any
 )
 
 from aiohttp import (
-    ClientWebSocketResponse, 
-    ClientConnectorError,
+    ClientConnectionError,
     ClientSession,
     WSCloseCode,
     WSMsgType,
 )
 
-log = logging.getLogger(__name__)
-
 class Client:
     """|class|
     
-    Handles webserver side requests to the bot process.
+    Handles the web application side requests to the bot process 
+    (intented to work as asynchronous context manager)
 
-    Parameters
+    Parameters:
     ----------
-    host: str
-        The IP or host of the IPC server, defaults to `127.0.0.1`
-    port: int
-        The port of the IPC server. Defaults to 1025.
-    secret_key: Union[str, bytes]
-        The secret key for your IPC server. Must match the server secret_key or requests will not go ahead, defaults to None
+    host: :str:`str`
+        The IP adress that hosts the server (the default is `127.0.0.1`).
+    secret_key: :str:`str`
+        The authentication that is used when creating the server (the default is `None`).
+    standart_port: :str:`int`
+        The port for the standart server (the default is `1025`)
+    multicast_port: :int:`int`
+        The port for the multicasting server (the default is `20000`)
+    do_multicast: :bool:`bool`
+        Should the client perform standart or multicast connection (the default is `True`)
+        
+        Please keep in mind that multicast clients cannot request routes that are only allowed for standart connections!
     """
-    lock = None
-    loop = None
-    logger = None
-    session = None
-    multicast = None
-    closed = False
-    started = False
+    logger = logging.getLogger(__name__)
 
     def __init__(
         self,
         host: str = "127.0.0.1",
-        port: int = 1025,
-        # multicast_port: int = 20000,
-        secret_key: Union[str, bytes, None] = None,
+        secret_key: Union[str, None] = None,
+        standart_port: int = 1025,
+        multicast_port: int = 20000,
+        do_multicast: bool = True
     ) -> None:
         self.host = host
-        self.port = port
-        # self.multicast_port = multicast_port
+        self.standart_port = standart_port
         self.secret_key = secret_key
+        self.multicast_port = multicast_port
+        self.do_multicast = do_multicast
 
     @property
     def url(self) -> str:
-        return f"ws://{self.host}:{self.port}"
+        if self.do_multicast:
+            return f"ws://{self.host}:{self.multicast_port}"
+        return f"ws://{self.host}:{self.standart_port}"
 
-    async def init_sock(self) -> ClientWebSocketResponse:
-        """|coro|
+    async def __aenter__(self) -> Client:
+        self.session = ClientSession()
+        return self
 
-        Attempts to connect to the server
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.session.close()
+        await self.ws.close()
 
-        Returns
-        -------
-        :class: `~aiohttp.ClientWebSocketResponse`
-            The websocket connection to the server
-        """
-        self.logger.debug("Initiating WebSocket connection")
+        self.session = None
+        self.ws = None
 
-        #TODO: multicast
-        # if not self.port:
-        #     self.logger.debug("No port was provided - initiating multicast connection at %s.", self.url,)
-        #     self.multicast = await self.session.ws_connect(self.url, autoping=False)
+    async def __init_socket__(self) -> None:
+        self.logger.debug("Initiating websocket connection")
 
-        #     payload = {
-        #         "connect": True, 
-        #         "headers": {"Authorization": self.secret_key}
-        #     }
-        #     self.logger.debug("Multicast Server < %r", payload)
+        try:
+            self.ws = await self.session.ws_connect(self.url, autoping=False, autoclose=False)
+        except ClientConnectionError:
+            raise NotConnected("WebSocket connection failed, the server is unreachable.")
 
-        #     await self.multicast.send_json(payload)
-        #     recv = await self.multicast.receive()
+        if await self.is_alive():
+            self.logger.debug(f"Client connected to {self.url!r}")
+        else:
+            self.logger.error("WebSocket connection failed, the server is unreachable.")
+            raise NotConnected("WebSocket connection failed, the server is unreachable.")
 
-        #     self.logger.debug("Multicast server response: %r", recv)
-
-        #     if recv.type in (WSMsgType.CLOSE, WSMsgType.CLOSED):
-        #         self.logger.error("WebSocket connection unexpectedly closed. Multicast Server is unreachable.")
-        #         raise NotConnected("Multicast server connection failed.")
-
-        #     port_data = recv.json()
-        #     self.port = port_data["port"]
-
-        self.logger.debug("Client connected to %s", self.url)
-        return await self.session.ws_connect(self.url, autoping=False, autoclose=False)
-
-    async def retry(
-        self,
-        endpoint: str,
-        **kwargs: Any,
-    ) -> WSCloseCode:
-        websocket = await self.init_sock()
-
+    async def __retry__(self, endpoint: str, **kwargs: Any,) -> WSCloseCode:
         payload = {
             "endpoint": endpoint,
             "data": kwargs,
             "headers": {"Authorization": self.secret_key},
         }
         try:
-            await websocket.send_json(payload)
+            await self.ws.send_json(payload)
         except Exception as e:
             self.logger.error("Failed to send payload", exc_info=e)
             return WSCloseCode.INTERNAL_ERROR
         else:
-            await websocket.close(code=WSCloseCode.OK)
             return WSCloseCode.OK
 
-    async def request(
-        self,
-        endpoint: str,
-        **kwargs: Any,
-    ) -> Optional[Any]:
+    async def is_alive(self) -> bool:
+        """|coro|
+
+        Performs a test to the connetion state
+        
+        """
+        payload = {
+            "connection_test": True
+        }
+
+        start = time.perf_counter()
+        await self.ws.send_json(payload)
+        self.logger.debug(f"Connection to websocket took {time.perf_counter() - start:,} ms")
+
+        if (await self.ws.receive()).type in (WSMsgType.CLOSE, WSMsgType.CLOSED):
+            return False
+        return True
+
+    async def request(self, endpoint: str, **kwargs: Any) -> Optional[Dict]:
         """|coro|
 
         Make a request to the IPC server process.
@@ -134,14 +132,7 @@ class Client:
         **kwargs
             The data to send to the endpoint
         """
-        if not self.started:
-            raise IPCError("Session not started yet!")
-
-        if self.closed:
-            raise IPCError("Session closed!")
-
-        self.logger.debug("Sending request to %r with %r", endpoint, kwargs)
-        websocket = await self.init_sock()
+        self.logger.debug(f"Sending request to {endpoint!r} with %r", kwargs)
         
         payload = {
             "endpoint": endpoint,
@@ -152,85 +143,28 @@ class Client:
         self.logger.debug("Sending playload: %r", payload)
 
         try:
-            await websocket.send_json(payload)
+            await self.ws.send_json(payload)
         except ConnectionResetError:
             self.logger.error("Cannot write to closing transport, restarting the connection in 3 seconds. (Could be raised if the client is on different machine that the server)")
-            await websocket.close(code=WSCloseCode.INTERNAL_ERROR)
             
-            await self.close()
-            await self.start(self.loop, self.logger)
+            return await self.__retry__(endpoint, **kwargs)
 
-            return await self.request(endpoint, **kwargs)
-
-        recv = await websocket.receive()
+        recv = await self.ws.receive()
 
         self.logger.debug("Receiving response: %r", recv)
 
         if recv.type is WSMsgType.CLOSED:
             self.logger.error("WebSocket connection unexpectedly closed, attempting to retry in 3 seconds.")
             await asyncio.sleep(3)
-            if await self.retry(endpoint, **kwargs) == WSCloseCode.INTERNAL_ERROR:
-                self.logger.error("Could not do perform the rquest after reattempt")
+
+            if await self.__retry__(endpoint, **kwargs) == WSCloseCode.INTERNAL_ERROR:
+                self.logger.error("Could not do perform the request after reattempt")
         
-        elif recv.type is WSMsgType.PING:
-            self.logger.debug("Received request to PING")
-            await websocket.ping()
-            await self.retry(endpoint, **kwargs)
-
-        elif recv.type is WSMsgType.PONG:
-            self.logger.debug("Received PONG")
-            await self.retry(endpoint, **kwargs)
-
         elif recv.type is WSMsgType.ERROR:
-            self.logger.error("Received WSMsgType of ERROR, intead of TEXT/BYTES!")
+            self.logger.error("Received WSMsgType of ERROR, instead of TEXT/BYTES!")
 
         else:
-            await websocket.close()
             data = recv.json()
-            if data["code"] != 200:
-                self.logger.warning("Received code %r insted of usual 200", data["code"])
+            if int(data["code"]) != 200:
+                self.logger.warning(f"Received code {data['code']!r} insted of usual 200")
             return data
-
-    async def start(
-        self, 
-        loop: Optional[asyncio.AbstractEventLoop] = None,
-        logger: Optional[logging.Logger] = None,
-    ) -> Client:
-        """|coro|
-
-        Starts the IPC session
-
-        Parameters
-        ----------
-        loop: `asyncio.AbstractEventLoop`
-            Asyncio loop to create the server in, if None, take default one.
-            If specified it is the caller's responsibility to close and cleanup the loop.
-        logger: `logging.Logger`
-            A custom logger for all event. Default on is `discord.ext.ipc`
-        """
-        self.loop = loop or asyncio.get_running_loop()
-        self.logger = logger or log
-        self.session = ClientSession()
-
-        try:
-            connection = await self.session.ws_connect(self.url, autoping=False)
-        except ClientConnectorError as e:
-            self.logger.critical(f"Failed to start the IPC, connection to {self.url!r} has failed!", exc_info=e)
-            raise RuntimeError(f"Failed to start the IPC, connection to {self.url!r} has failed!")
-        except Exception as e:
-            self.logger.critical("Failed to start the IPC, unexpected error occured!", exc_info=e)
-            raise RuntimeError(f"Failed to start the IPC, unexpected error occured!")
-        else:
-            await connection.close()
-            self.closed = False
-            self.started = True
-            return self
-    
-    async def close(self) -> None:
-        """|coro|
-
-        Stops the IPC session
-        """
-        if self.session:
-            await self.session.close()
-        self.closed = True

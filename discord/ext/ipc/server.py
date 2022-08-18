@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import warnings
+
+from aiohttp import WSMessage
+from .errors import *
+from .objects import ServerPayload
+
 from typing import (
-    TYPE_CHECKING, 
+    TYPE_CHECKING,
+    Any, 
     Optional,
     Callable,
     ClassVar,
@@ -13,7 +18,6 @@ from typing import (
     Union,
     Type,
 )
-from aiohttp import WSMessage
 
 from aiohttp.web import (
     WebSocketResponse, 
@@ -22,9 +26,11 @@ from aiohttp.web import (
     TCPSite,
     Request,
 )
-from discord.ext.commands import Bot, AutoShardedBot
-from discord.ext.ipc.errors import *
-from discord.ext.ipc.objects import ServerPayload
+from discord.ext.commands import (
+    Bot, 
+    AutoShardedBot, 
+    Cog
+)
 
 if TYPE_CHECKING:
     from typing_extensions import ParamSpec, TypeAlias
@@ -34,10 +40,10 @@ if TYPE_CHECKING:
     
     RouteFunc: TypeAlias = Callable[P, T]
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
-def route(name: Optional[str] = None) -> Callable[[RouteFunc], RouteFunc]:
+def route(name: Optional[str] = None, multicast: bool = True) -> Callable[[RouteFunc], RouteFunc]:
     """|method|
 
     Used to register a coroutine as an endpoint when you have
@@ -45,10 +51,12 @@ def route(name: Optional[str] = None) -> Callable[[RouteFunc], RouteFunc]:
 
     Parameters
     ----------
-    name: `str`
+    name: :class:`str`
         The endpoint name. If not provided the method name will be used.
+    multicast :class:`bool`
+        Should the enpoint be avaiable only
     """
-    warnings.warn(
+    logger.warning(
         "This function will be deprecated later "
         "in the future. Consider using `Server.route`."
     )
@@ -60,63 +68,61 @@ def route(name: Optional[str] = None) -> Callable[[RouteFunc], RouteFunc]:
                 break
         else:
             payload_cls = ServerPayload
+        func.__multicasted__ = multicast
 
         Server.endpoints[name or func.__name__] = (func, payload_cls)
         return func
-
     return decorator
 
 
 class Server:
     """|class|
     
-    The IPC server. Usually used on the bot process for receiving
+    The inter-process communication server. Usually used on the bot process for receiving
     requests from the client.
-    Attributes
+
+    Parameters:
     ----------
-    bot: :class:`~discord.ext.commands.Bot`
+    bot: :class:`discord.ext.commands.Bot`
         Your bot instance
     host: :str:`str`
-        The host to run the IPC Server on. Defaults to `127.0.0.1`.
-    port: :str:`int`
-        The port to run the IPC Server on. Defaults to `1025`.
+        The IP adress to start the server (the default is `127.0.0.1`).
     secret_key: :str:`str`
-        A secret key. Used for authentication and should be the same as
-        your client's secret key.
-    do_multicast: :bool:`bool`
-        Turn multicasting on/off. Defaults to False
+        Used for authentication when handling requests.
+    standart_port: :str:`int`
+        The port to run the standart server (the default is `1025`)
     multicast_port: :int:`int`
-        The port to run the multicasting server on. Defaults to 20000
-    logger: `logging.Logger`
-        A custom logger for all event. Default one is `discord.ext.ipc`
+        The port to run the multicasting server (the default is `20000`)
+    do_multicast: :bool:`bool`
+        Should the multicasting be allowed (the default is `True`)
     """
+
+    __servers__: Dict[str, Application] = {}
+    __runners__: Dict[str, AppRunner] = {}
+    __webservers__: Dict[str, AppRunner] = {}
     endpoints: ClassVar[Dict[str, Tuple[RouteFunc, Type[ServerPayload]]]] = {}
-    _runner = None
-    _server = None
-    _multicast_server = None
 
     def __init__(
         self, 
         bot: Union[Bot, AutoShardedBot], 
         host: str = "127.0.0.1", 
-        port: int = 1025,
-        secret_key: str = None, 
-        do_multicast: bool = False,
+        secret_key: Union[str, None] = None, 
+        standart_port: int = 1025,
         multicast_port: int = 20000,
-        logger: logging.Logger = log,
+        do_multicast: bool = True
     ) -> None:
         self.bot = bot
         self.host = host
-        self.port = port
         self.secret_key = secret_key
-        self.do_multicast = do_multicast
+        self.standart_port = standart_port
         self.multicast_port = multicast_port
-        self.logger = logger
+        self.do_multicast = do_multicast
         self.loop = bot.loop 
 
-    def _get_parent(self, func):
-        cls = func.__qualname__.strip(f".{func.__name__}")
-        return self.bot.cogs.get(cls)
+    def __get_parent__(self, func: RouteFunc) -> Optional[Cog]:
+        for cog in self.bot.cogs.values():
+            if func.__name__ in dir(cog):
+                return cog
 
     def start(self) -> None:
         """
@@ -125,28 +131,40 @@ class Server:
         Starts the IPC server
 
         """
-        self._server = Application()
-        self._server.router.add_route("GET", "/", self.accept_request)
+        self.__servers__["standart"] = Application()
+        self.__servers__["standart"].router.add_route("GET", "/", self.__handle_standart__)
+
+        self.__runners__["standart"] = AppRunner(self.__servers__["standart"])
+        self.__webservers__["standart"] = TCPSite(self.__runners__["standart"], self.host, self.standart_port)
+        
+        self.loop.run_until_complete(self.__runners__["standart"].setup())
+        self.loop.run_until_complete(self.__webservers__["standart"].start())
+
+        logger.info("Standart server is ready for use")
 
         if self.do_multicast:
-            self._multicast_server = Application()
-            self._multicast_server.router.add_route("GET", "/", self.handle_multicast)
-            self.loop.create_task(self.setup(self._multicast_server, self.multicast_port))
-        
-        self.loop.create_task(self.setup(self._server, self.port))
+            self.__servers__["mutlicast"] = Application()
+            self.__servers__["mutlicast"].router.add_route("GET", "/", self.__handle_multicast__)
+
+            self.__runners__["mutlicast"] = AppRunner(self.__servers__["mutlicast"])
+            self.__webservers__["mutlicast"] = TCPSite(self.__runners__["mutlicast"], self.host, self.multicast_port)
+            
+            self.loop.run_until_complete(self.__runners__["mutlicast"].setup())
+            self.loop.run_until_complete(self.__webservers__["mutlicast"].start())
+
+            logger.info("Mutlicast server is ready for use")
         
         if self.bot.is_ready():
-            self.logger.info("The IPC server is ready")
+            logger.info("The IPC server is ready")
             self.bot.dispatch("ipc_ready")
         else:
-            self.loop.create_task(self.wait_bot_is_ready())
+            self.loop.create_task(self.__wait_bot_is_ready__())
 
     @classmethod
-    def route(cls, name: Optional[str] = None) -> Callable[[RouteFunc], RouteFunc]:
+    def route(cls, name: Optional[str] = None, multicast: Optional[bool] = True) -> Callable[[RouteFunc], RouteFunc]:
         """|method|
 
-        Used to register a coroutine as an endpoint when you have
-        access to an instance of :class:`~discord.ext.ipc.Server`
+        Used to register a coroutine as an endpoint
 
         Parameters
         ----------
@@ -154,72 +172,52 @@ class Server:
             The endpoint name. If not provided the method name will be used.
         """
         def decorator(func: RouteFunc) -> RouteFunc:
-            for cls in func.__annotations__.values():
-                if isinstance(cls, ServerPayload):
-                    payload_cls = cls
+            for _cls in func.__annotations__.values():
+                if isinstance(_cls, ServerPayload):
+                    payload_cls = _cls
                     break
             else:
                 payload_cls = ServerPayload
+            func.__multicasted__ = multicast
 
             Server.endpoints[name or func.__name__] = (func, payload_cls)
             return func
         return decorator
 
-    async def accept_request(self, original_request: Request) -> None:
-        """|coro|
+    async def __wait_bot_is_ready__(self) -> None:
+        await self.bot.wait_until_ready()
+        logger.info("The IPC server is ready")
+        self.bot.dispatch("ipc_ready")
 
-        Aceepts websocket requests from the client process
-
-        Parameters
-        ----------
-        request: :class:`~aiohttp.web.Request`
-            The request made by the client, parsed by aiohttp.
-        """
-        self.logger.debug("Handing new IPC request")
+    async def __handle_standart__(self, original_request: Request) -> None:
+        logger.debug("Handing new IPC request")
 
         websocket = WebSocketResponse()
         await websocket.prepare(original_request)
 
         async for message in websocket:
-            asyncio.create_task(self.process_request(websocket, message))
+            asyncio.create_task(self.__process_request__(websocket, message, False))
 
-    async def handle_multicast(self, request: Request) -> None:
-        """|coro|
+    async def __handle_multicast__(self, original_request: Request) -> None:
+        logger.debug("Handing new IPC request")
 
-        Handles websocket requests at the same time
-        
-        Parameters
-        ----------
-        request: :class:`~aiohttp.web.Request`
-            The request made by the client, parsed by aiohttp.
-        """
-        self.loop.create_task(self.process_request(request))
+        websocket = WebSocketResponse()
+        await websocket.prepare(original_request)
 
-    async def process_request(self, websocket: WebSocketResponse, message: WSMessage) -> None:
-        """|coro|
+        async for message in websocket:
+            asyncio.create_task(self.__process_request__(websocket, message, True))
 
-        Processes requests by the client
-
-        Parameters
-        ----------
-        websocket: :class:`~aiohttp.web.WebSocketResponse`
-            The socket from the request
-        message: :class:`~aiohttp.WSMessage`
-            The message that was send in the request
-        """
+    async def __process_request__(self, websocket: WebSocketResponse, message: WSMessage, multicast: bool) -> None:
         request = message.json()
 
-        self.logger.debug("Receiving request: %r", request)
+        logger.debug(f"Receiving request: {request!r}")
 
-        endpoint = request.get("endpoint")
-        headers = request.get("headers")
+        endpoint: Optional[RouteFunc] = request.get("endpoint")
+        headers: Dict = request.get("headers")
+        authorization: Optional[str] = headers.get("Authorization")
 
-        if not (authorization := headers.get("Authorization")):
-            self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (no token provided))"))
-            response = {
-                "error": "Received unauthorized request (no token provided)", 
-                "code": 403
-            }
+        if request.get("connection_test"):
+            return await websocket.send_json({"code": 200})
 
         elif authorization != self.secret_key:
             self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (invalid token provided)"))
@@ -242,99 +240,67 @@ class Server:
                     "code": 404
                 }
 
-            elif endpoint not in self.endpoints:
-                self.bot.dispatch("ipc_error", endpoint, IPCError("Received invalid request (invalid endpoint provided)"))
+            elif multicast and not endpoint.__multicasted__:
+                self.bot.dispatch("ipc_error", endpoint, IPCError("The requested is not available for multicast connections!"))
                 response = {
-                    "error": "Received invalid request (invalid endpoint provided)",
-                    "code": 404
+                    "error": "The requested route is not available for multicast connections!",
+                    "code": 403
                 }
+                
             else:
                 endpoint, payload_cls = Server.endpoints.get(endpoint)
-                attempted_cls = self._get_parent(endpoint)
+                attempted_cls = self.__get_parent__(endpoint)
                     
                 if attempted_cls:
                     arguments = (attempted_cls, payload_cls(request))
                 else:
-                    # CLient support
+                    # Client support
                     arguments = (payload_cls(request),)
 
-                self.logger.debug(arguments)
-
                 try:
-                    response = await endpoint(*arguments)
-                except Exception as error:
-                    self.logger.error(
-                        "Received error while executing %r with %r", endpoint, request,
-                        exc_info=error
-                    )
-                    self.bot.dispatch("ipc_error", endpoint, error)
-
+                    response: Union[Dict, Any] = await endpoint(*arguments)
+                except Exception as exception:
+                    self.bot.dispatch("ipc_error", endpoint, exception)
                     response = {
-                        "error": str(error),
+                        "error": str(exception),
                         "code": 500,
                     }
 
+                    logger.error(f"Received error while executing {endpoint!r}", exc_info=exception)
         try:
             response = response or {} 
+            if not isinstance(response, Dict):
+                exception = f"Expected type `Dict` as response, got {response.__class__.__name__!r} instead!"
                 
-            if not response.get("code"):
-                response["code"] = 200
-
-            await websocket.send_json(response)
-            self.logger.debug("Sending response: %r", response)
-        except TypeError as error:
-            if str(error).startswith("Object of type") and str(error).endswith("is not JSON serializable"):
-                error_response = (
-                    "IPC route returned values which are not able to be sent over sockets."
-                    "If you are trying to send a discord.py object,"
-                    "please only send the data you need."
-                )
-
-                self.bot.dispatch("ipc_error", endpoint, IPCError(error_response))
+                self.bot.dispatch("ipc_error", endpoint, JSONEncodeError(exception))
 
                 response = {
-                    "error": error_response, 
+                    "error": exception, 
                     "code": 500
                 }
 
-                await websocket.send_json(response)
-                self.logger.debug("Sending Response: %r", response)
+                logger.debug(f"Sending Response: {response!r}")
+                return await websocket.send_json(response)
 
-                raise JSONEncodeError(error_response)
+            if not response.get("code"): 
+                response["code"] = 200
+
+            await websocket.send_json(response)
         except Exception:
-            raise IPCError("Could not send JSON data to websocket!")
-
-    async def setup(self, application: Application, port: int) -> None:
-        """|coro|
-
-        This function stats the IPC runner and the IPC webserver
-        
-        Parameters
-        ----------
-        application: :class:`aiohttp.web.Application`
-            The internal router's app
-        port: :int:`int`
-            The specific port to run the application (:class:`~aiohttp.web.Application`)
-        """
-        self.logger.debug('Starting the IPC runner')
-        self._runner = AppRunner(application)
-        await self._runner.setup()
-
-        self.logger.debug('Starting the IPC webserver')
-        _webserver = TCPSite(self._runner, self.host, port)
-        await _webserver.start()
+            self.bot.dispatch("ipc_error", endpoint, IPCError("Could not send JSON data to websocket!"))
+        else:
+            logger.debug(f"Sending response: {response!r}")
 
     async def stop(self) -> None:
         """|coro|
 
-        Stops both the IPC webserver
-        """
-        self.logger.info('Stopping up the IPC webserver')
-        self.logger.debug(self._runner.addresses)
-        await self._runner.shutdown()
-        await self._runner.cleanup()
+        Takes care of shutting down the servers and cleaning up the runners
 
-    async def wait_bot_is_ready(self) -> None:
-        await self.bot.wait_until_ready()
-        self.logger.info("The IPC server is ready")
-        self.bot.dispatch("ipc_ready")
+        """
+
+        for server, runner in zip(self.__servers__.items(), self.__runners__.items()):
+            logger.info(f"Stopping {server[0]} server")
+            await server[1].shutdown()
+
+            logger.info(f"Stopping {runner[0]} runner")
+            await runner[1].cleanup()

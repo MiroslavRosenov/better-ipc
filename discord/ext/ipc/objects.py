@@ -2,7 +2,6 @@ from typing import Dict, Any, TypeVar
 
 PT = TypeVar("PT")
 
-
 class ServerPayload:
     """|class|
 
@@ -12,12 +11,16 @@ class ServerPayload:
     payload then it will automatically use this base payload,
     but keys and values can be accessed like a dictionary or using `X.y`.
 
+    Parameters:
+    ----------
+    data: :class:`Dict`
+        The payload to be converted.
+
     Attributes
     ----------
-    `lenght`: :class:`int`
+    lenght: `int`
         The lenght of the payload.
-
-    `endpoint`: :class:`str`
+    endpoint: `str`
         The endpoint which was called.
     """
 
@@ -39,7 +42,7 @@ class ServerPayload:
             return object.__getattribute__(self, "_data")[__name]
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(lenght={self.lenght} endpoint='{self.endpoint}')"
+        return f"{self.__class__.__name__} lenght={self.lenght} endpoint={self.endpoint!r}s"
 
     @property
     def data(self):
