@@ -5,7 +5,7 @@ import logging
 
 from aiohttp import WSMessage
 from .errors import *
-from .objects import ServerPayload
+from .objects import ClientPayload
 
 from typing import (
     TYPE_CHECKING,
@@ -68,11 +68,11 @@ def route(name: Optional[str] = None, multicast: bool = True) -> Callable[[Route
 
     def decorator(func: RouteFunc) -> RouteFunc:
         for cls in func.__annotations__.values():
-            if isinstance(cls, ServerPayload):
+            if isinstance(cls, ClientPayload):
                 payload_cls = cls
                 break
         else:
-            payload_cls = ServerPayload
+            payload_cls = ClientPayload
         func.__multicasted__ = multicast
 
         Server.endpoints[name or func.__name__] = (func, payload_cls)
@@ -105,7 +105,7 @@ class Server:
     __servers__: Dict[str, Application] = {}
     __runners__: Dict[str, AppRunner] = {}
     __webservers__: Dict[str, AppRunner] = {}
-    endpoints: ClassVar[Dict[str, Tuple[RouteFunc, Type[ServerPayload]]]] = {}
+    endpoints: ClassVar[Dict[str, Tuple[RouteFunc, Type[ClientPayload]]]] = {}
 
     def __init__(
         self, 
@@ -122,30 +122,11 @@ class Server:
         self.standart_port = standart_port
         self.multicast_port = multicast_port
         self.do_multicast = do_multicast
-        self.loop = asyncio.get_event_loop()
 
     def __get_parent__(self, func: RouteFunc) -> Optional[Cog]:
         for cog in self.bot.cogs.values():
             if func.__name__ in dir(cog):
                 return cog
-
-    def start(self) -> None:
-        """
-        |method|
-        
-        Starts the IPC server
-
-        """
-        self.loop.create_task(self.__create_server__("standart", self.standart_port, self.__handle_standart__))
-        
-        if self.do_multicast:
-            self.loop.create_task(self.__create_server__("mutlicast", self.multicast_port, self.__handle_multicast__))
-        
-        if self.bot.is_ready():
-            logger.info("The IPC server is ready")
-            self.bot.dispatch("ipc_ready")
-        else:
-            self.loop.create_task(self.__wait_bot_is_ready__())
 
     @classmethod
     def route(cls, name: Optional[str] = None, multicast: Optional[bool] = True) -> Callable[[RouteFunc], RouteFunc]:
@@ -160,21 +141,20 @@ class Server:
         """
         def decorator(func: RouteFunc) -> RouteFunc:
             for _cls in func.__annotations__.values():
-                if isinstance(_cls, ServerPayload):
+                if isinstance(_cls, ClientPayload):
                     payload_cls = _cls
                     break
             else:
-                payload_cls = ServerPayload
+                payload_cls = ClientPayload
             func.__multicasted__ = multicast
 
             Server.endpoints[name or func.__name__] = (func, payload_cls)
             return func
         return decorator
 
-    async def __wait_bot_is_ready__(self) -> None:
-        await self.bot.wait_until_ready()
-        logger.info("The IPC server is ready")
-        self.bot.dispatch("ipc_ready")
+    @property
+    async def started(self) -> bool:
+        return len(self.__servers__) > 0
 
     async def __handle_standart__(self, original_request: Request) -> None:
         logger.debug("Handing new IPC request")
@@ -214,7 +194,7 @@ class Server:
             }
 
         if not headers or headers.get("Authorization") != self.secret_key:
-            self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (Invalid or no token provided)!"))
+            self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (invalid or no token provided)!"))
             response = {
                 "error": "Received unauthorized request (invalid or no token provided)!", 
                 "code": 403
@@ -297,6 +277,23 @@ class Server:
 
         logger.info(f"{name.title()!r} server is ready for use")
 
+    async def start(self) -> None:
+        """|coro|
+        
+        Starts all necessary processes for the servers and runners to work properly
+
+        """
+        await self.__create_server__("standart", self.standart_port, self.__handle_standart__)
+        
+        if self.do_multicast:
+            await self.__create_server__("mutlicast", self.multicast_port, self.__handle_multicast__)
+        
+        if self.bot.is_ready():
+            self.bot.dispatch("ipc_ready")
+        else:
+            await self.bot.wait_until_ready()
+            self.bot.dispatch("ipc_ready")
+
     async def stop(self) -> None:
         """|coro|
 
@@ -310,3 +307,5 @@ class Server:
 
             logger.info(f"Stopping {runner[0]} runner")
             await runner[1].cleanup()
+
+        self.__servers__ = self.__runners__ = self.__webservers__ = {}

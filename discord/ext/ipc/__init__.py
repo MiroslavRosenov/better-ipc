@@ -1,7 +1,7 @@
 """
 Better IPC
 ~~~~~~
-A high-performance inter-process communication 
+High-performance inter-process communication 
 library designed to work with the latest version of discord.py
 :license: Apache License 2.0
 """
@@ -23,5 +23,5 @@ __author__ = "DaPandaOfficial"
 
 from .client import Client
 from .server import Server
-from .objects import ServerPayload
+from .objects import ClientPayload
 from .errors import *

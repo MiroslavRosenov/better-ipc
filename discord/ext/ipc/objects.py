@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional, TypeVar
 
 PT = TypeVar("PT")
 
-class ServerPayload:
+class ClientPayload:
     """|class|
 
     The base class for the payload which is sent to the endpoint
