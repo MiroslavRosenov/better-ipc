@@ -14,6 +14,7 @@ from typing import (
 )
 
 from aiohttp import (
+    ClientConnectorError,
     ClientConnectionError,
     ClientSession,
     WSCloseCode,
@@ -80,16 +81,16 @@ class Client:
 
         try:
             self.ws = await self.session.ws_connect(self.url, autoping=False, autoclose=False)
-        except ClientConnectionError:
+        except (ClientConnectorError, ClientConnectionError):
             raise NotConnected("WebSocket connection failed, the server is unreachable.")
 
         if await self.is_alive():
             self.logger.debug(f"Client connected to {self.url!r}")
         else:
-            self.logger.error("WebSocket connection failed, the server is unreachable.")
+            await self.session.close()
             raise NotConnected("WebSocket connection failed, the server is unreachable.")
 
-    async def __retry__(self, endpoint: str, **kwargs: Any,) -> WSCloseCode:
+    async def __retry__(self, endpoint: str, **kwargs: Any) -> WSCloseCode:
         payload = {
             "endpoint": endpoint,
             "data": kwargs,

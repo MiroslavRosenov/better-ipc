@@ -1,4 +1,4 @@
-from typing import Dict, Any, TypeVar
+from typing import Dict, Any, Optional, TypeVar
 
 PT = TypeVar("PT")
 
@@ -13,7 +13,7 @@ class ServerPayload:
 
     Parameters:
     ----------
-    data: :class:`Dict`
+    payload: :class:`Dict`
         The payload to be converted.
 
     Attributes
@@ -22,35 +22,38 @@ class ServerPayload:
         The lenght of the payload.
     endpoint: `str`
         The endpoint which was called.
+    data: `Dict`
+        The kwargs from the payload.
     """
 
-    def __init__(self, data: Dict[str, Any]):
-        self._data = data
-        self.lenght = len(data)
-        self.endpoint = data["endpoint"]
+    def __init__(self, payload: Dict[str, Any]):
+        self.payload = payload
+        self.lenght: int = len(payload)
+        self.endpoint: Optional[str] = payload.get("endpoint")
+        self.data: Optional[Dict[str, Any]] = payload.get("data")
 
     def __getitem__(self, __k: str):
-        return self._data[__k]
+        return self.data[__k]
 
     def __contains__(self, __o: object) -> bool:
-        return __o in self._data or __o in self._data.values()
+        return __o in self.data or __o in self.data.values()
 
     def __getattribute__(self, __name: str) -> Any:
         try:
             return object.__getattribute__(self, __name)
         except AttributeError:
-            return object.__getattribute__(self, "_data")[__name]
+            return self.data[__name]
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__} lenght={self.lenght} endpoint={self.endpoint!r}s"
+        return f"<{self.__class__.__name__} lenght={self.lenght} endpoint={self.endpoint!r}>"
 
     @property
-    def data(self):
-        return self._data
+    def raw(self):
+        return self.payload
 
     def items(self):
         """|method|
 
         Returns the payload in the form of dictionary items.
         """
-        return self._data.items()
+        return self.payload.items()
