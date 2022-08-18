@@ -42,6 +42,8 @@ class Client:
         
         Please keep in mind that multicast clients cannot request routes that are only allowed for standart connections!
     """
+    ws = None
+    session = None
     logger = logging.getLogger(__name__)
 
     def __init__(

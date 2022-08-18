@@ -51,15 +51,14 @@ logger = logging.getLogger(__name__)
 def route(name: Optional[str] = None, multicast: bool = True) -> Callable[[RouteFunc], RouteFunc]:
     """|method|
 
-    Used to register a coroutine as an endpoint when you have
-    access to an instance of :class:`~discord.ext.ipc.Server`
+    Used to register a coroutine as an endpoint
 
     Parameters
     ----------
     name: :class:`str`
         The endpoint name. If not provided the method name will be used.
     multicast :class:`bool`
-        Should the enpoint be avaiable only
+        Should the enpoint be avaiable for multicast or not. If this is set to False only standart connection can access it.
     """
     logger.warning(
         "This function will be deprecated later "
@@ -137,8 +136,10 @@ class Server:
 
         Parameters
         ----------
-        name: `str`
+        name: :class:`str`
             The endpoint name. If not provided the method name will be used.
+        multicast :class:`bool`
+            Should the enpoint be avaiable for multicast or not. If this is set to False only standart connection can access it.
         """
         def decorator(func: RouteFunc) -> RouteFunc:
             for _cls in func.__annotations__.values():

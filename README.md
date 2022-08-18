@@ -56,8 +56,6 @@ class MyBot(commands.Bot):
     async def get_user_data(self, data: ClientPayload) -> Dict:
         user = self.get_user(data.user_id)
         return user._to_minimal_user_json()
-
-MyBot.ipc.route()
 ```
 
 
