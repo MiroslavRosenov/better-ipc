@@ -115,9 +115,10 @@ class Client:
 
         start = time.perf_counter()
         await self.ws.send_json(payload)
+        r = await self.ws.receive()
         self.logger.debug(f"Connection to websocket took {time.perf_counter() - start:,} ms")
-
-        if (await self.ws.receive()).type in (WSMsgType.CLOSE, WSMsgType.CLOSED):
+        
+        if r.type in (WSMsgType.CLOSE, WSMsgType.CLOSED):
             return False
         return True
 

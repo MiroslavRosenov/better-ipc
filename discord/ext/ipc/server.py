@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import traceback
 
 from aiohttp import WSMessage
 from .errors import *
@@ -207,27 +208,34 @@ class Server:
             return await websocket.send_json({"code": 200})
 
         elif authorization != self.secret_key:
-            self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (invalid token provided)"))
+            self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (invalid token provided)!"))
             response = {
-                "error": "Received unauthorized request (invalid token provided)", 
+                "error": "Received unauthorized request (invalid token provided)!", 
                 "code": 403
             }
 
         if not headers or headers.get("Authorization") != self.secret_key:
-            self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (Invalid or no token provided)"))
+            self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (Invalid or no token provided)!"))
             response = {
-                "error": "Received unauthorized request (invalid or no token provided).", 
+                "error": "Received unauthorized request (invalid or no token provided)!", 
                 "code": 403
             }
         else:
             if not endpoint:
-                self.bot.dispatch("ipc_error", endpoint, IPCError("Received invalid request (no endpoint provided)"))
+                self.bot.dispatch("ipc_error", endpoint, IPCError("Received invalid request (no endpoint provided)!"))
                 response = {
-                    "error": "Received invalid request (no endpoint provided)",
+                    "error": "Received invalid request (no endpoint provided)!",
                     "code": 404
                 }
 
-            elif multicast and not self.endpoints.get(endpoint)[0].__multicasted__:
+            elif not (_endpoint_ := self.endpoints.get(endpoint)):
+                self.bot.dispatch("ipc_error", endpoint, IPCError("Received invalid request (invalid endpoint requested)!"))
+                response = {
+                    "error": "Received invalid request (invalid endpoint requested)!",
+                    "code": 404
+                }
+
+            elif multicast and not _endpoint_[0].__multicasted__:
                 self.bot.dispatch("ipc_error", endpoint, IPCError("The requested is not available for multicast connections!"))
                 response = {
                     "error": "The requested route is not available for multicast connections!",
@@ -249,7 +257,7 @@ class Server:
                 except Exception as exception:
                     self.bot.dispatch("ipc_error", endpoint, exception)
                     response = {
-                        "error": str(exception),
+                        "error": "Something went wrong while calling the route!",
                         "code": 500,
                     }
 
