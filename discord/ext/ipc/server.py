@@ -127,6 +127,7 @@ class Server:
         for cog in self.bot.cogs.values():
             if func.__name__ in dir(cog):
                 return cog
+        return self.bot
 
     @classmethod
     def route(cls, name: Optional[str] = None, multicast: Optional[bool] = True) -> Callable[[RouteFunc], RouteFunc]:

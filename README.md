@@ -52,11 +52,12 @@ class MyBot(commands.Bot):
     async def setup_hook(self) -> None:
         await self.ipc.start()
 
+    @route()
+    async def get_user_data(self, data: ClientPayload) -> Dict:
+        user = self.get_user(data.user_id)
+        return user._to_minimal_user_json()
 
 MyBot.ipc.route()
-async def get_user_data(data: ClientPayload) -> Dict:
-    user = MyBot.get_user(data.user_id)
-    return user._to_minimal_user_json()
 ```
 
 
