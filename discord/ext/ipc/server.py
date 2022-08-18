@@ -24,8 +24,13 @@ from aiohttp.web import (
     Application,
     AppRunner,
     TCPSite,
-    Request,
+    Request
 )
+
+from aiohttp.web_urldispatcher import (
+    Handler
+)
+
 from discord.ext.commands import (
     Bot, 
     AutoShardedBot, 
@@ -117,7 +122,7 @@ class Server:
         self.standart_port = standart_port
         self.multicast_port = multicast_port
         self.do_multicast = do_multicast
-        self.loop = bot.loop 
+        self.loop = asyncio.get_event_loop()
 
     def __get_parent__(self, func: RouteFunc) -> Optional[Cog]:
         for cog in self.bot.cogs.values():
@@ -131,28 +136,10 @@ class Server:
         Starts the IPC server
 
         """
-        self.__servers__["standart"] = Application()
-        self.__servers__["standart"].router.add_route("GET", "/", self.__handle_standart__)
-
-        self.__runners__["standart"] = AppRunner(self.__servers__["standart"])
-        self.loop.run_until_complete(self.__runners__["standart"].setup())
-
-        self.__webservers__["standart"] = TCPSite(self.__runners__["standart"], self.host, self.standart_port)
-        self.loop.run_until_complete(self.__webservers__["standart"].start())
-
-        logger.info("Standart server is ready for use")
-
+        self.loop.create_task(self.__create_server__("standart", self.standart_port, self.__handle_standart__))
+        
         if self.do_multicast:
-            self.__servers__["mutlicast"] = Application()
-            self.__servers__["mutlicast"].router.add_route("GET", "/", self.__handle_multicast__)
-
-            self.__runners__["mutlicast"] = AppRunner(self.__servers__["mutlicast"])
-            self.loop.run_until_complete(self.__runners__["mutlicast"].setup())
-
-            self.__webservers__["mutlicast"] = TCPSite(self.__runners__["mutlicast"], self.host, self.multicast_port)
-            self.loop.run_until_complete(self.__webservers__["mutlicast"].start())
-
-            logger.info("Mutlicast server is ready for use")
+            self.loop.create_task(self.__create_server__("mutlicast", self.multicast_port, self.__handle_multicast__))
         
         if self.bot.is_ready():
             logger.info("The IPC server is ready")
@@ -290,6 +277,18 @@ class Server:
             self.bot.dispatch("ipc_error", endpoint, IPCError("Could not send JSON data to websocket!"))
         else:
             logger.debug(f"Sending response: {response!r}")
+
+    async def __create_server__(self, name: str, port: int, handler: Handler) -> None:
+        self.__servers__[name] = Application()
+        self.__servers__[name].router.add_route("GET", "/", handler)
+
+        self.__runners__[name] = AppRunner(self.__servers__[name])
+        await self.__runners__[name].setup()
+
+        self.__webservers__[name] = TCPSite(self.__runners__[name], self.host, port)
+        await self.__webservers__[name].start()
+
+        logger.info(f"{name.title()!r} server is ready for use")
 
     async def stop(self) -> None:
         """|coro|
