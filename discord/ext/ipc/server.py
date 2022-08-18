@@ -58,7 +58,7 @@ def route(name: Optional[str] = None, multicast: bool = True) -> Callable[[Route
     name: :class:`str`
         The endpoint name. If not provided the method name will be used.
     multicast :class:`bool`
-        Should the enpoint be avaiable for multicast or not. If this is set to False only standart connection can access it.
+        Should the enpoint be avaiable for multicast or not. If this is set to False only standard connection can access it.
     """
     logger.warning(
         "This function will be deprecated later "
@@ -93,8 +93,8 @@ class Server:
         The IP adress to start the server (the default is `127.0.0.1`).
     secret_key: :str:`str`
         Used for authentication when handling requests.
-    standart_port: :str:`int`
-        The port to run the standart server (the default is `1025`)
+    standard_port: :str:`int`
+        The port to run the standard server (the default is `1025`)
     multicast_port: :int:`int`
         The port to run the multicasting server (the default is `20000`)
     do_multicast: :bool:`bool`
@@ -111,14 +111,14 @@ class Server:
         bot: Union[Bot, AutoShardedBot], 
         host: str = "127.0.0.1", 
         secret_key: Union[str, None] = None, 
-        standart_port: int = 1025,
+        standard_port: int = 1025,
         multicast_port: int = 20000,
         do_multicast: bool = True
     ) -> None:
         self.bot = bot
         self.host = host
         self.secret_key = secret_key
-        self.standart_port = standart_port
+        self.standard_port = standard_port
         self.multicast_port = multicast_port
         self.do_multicast = do_multicast
 
@@ -139,7 +139,7 @@ class Server:
         name: :class:`str`
             The endpoint name. If not provided the method name will be used.
         multicast :class:`bool`
-            Should the enpoint be avaiable for multicast or not. If this is set to False only standart connection can access it.
+            Should the enpoint be avaiable for multicast or not. If this is set to False only standard connection can access it.
         """
         def decorator(func: RouteFunc) -> RouteFunc:
             for _cls in func.__annotations__.values():
@@ -158,7 +158,7 @@ class Server:
     async def started(self) -> bool:
         return len(self.__servers__) > 0
 
-    async def __handle_standart__(self, original_request: Request) -> None:
+    async def __handle_standard__(self, original_request: Request) -> None:
         logger.debug("Handing new IPC request")
 
         websocket = WebSocketResponse()
@@ -286,7 +286,7 @@ class Server:
 
         """
         self.loop = asyncio.get_event_loop()
-        await self.__create_server__("standart", self.standart_port, self.__handle_standart__)
+        await self.__create_server__("standard", self.standard_port, self.__handle_standard__)
         
         if self.do_multicast:
             await self.__create_server__("mutlicast", self.multicast_port, self.__handle_multicast__)

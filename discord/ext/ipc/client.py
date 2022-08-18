@@ -33,14 +33,14 @@ class Client:
         The IP adress that hosts the server (the default is `127.0.0.1`).
     secret_key: :str:`str`
         The authentication that is used when creating the server (the default is `None`).
-    standart_port: :str:`int`
-        The port for the standart server (the default is `1025`)
+    standard_port: :str:`int`
+        The port for the standard server (the default is `1025`)
     multicast_port: :int:`int`
         The port for the multicasting server (the default is `20000`)
     do_multicast: :bool:`bool`
-        Should the client perform standart or multicast connection (the default is `True`)
+        Should the client perform standard or multicast connection (the default is `True`)
         
-        Please keep in mind that multicast clients cannot request routes that are only allowed for standart connections!
+        Please keep in mind that multicast clients cannot request routes that are only allowed for standard connections!
     """
     ws = None
     session = None
@@ -50,12 +50,12 @@ class Client:
         self,
         host: str = "127.0.0.1",
         secret_key: Union[str, None] = None,
-        standart_port: int = 1025,
+        standard_port: int = 1025,
         multicast_port: int = 20000,
         do_multicast: bool = True
     ) -> None:
         self.host = host
-        self.standart_port = standart_port
+        self.standard_port = standard_port
         self.secret_key = secret_key
         self.multicast_port = multicast_port
         self.do_multicast = do_multicast
@@ -64,7 +64,7 @@ class Client:
     def url(self) -> str:
         if self.do_multicast:
             return f"ws://{self.host}:{self.multicast_port}"
-        return f"ws://{self.host}:{self.standart_port}"
+        return f"ws://{self.host}:{self.standard_port}"
 
     async def __aenter__(self) -> Client:
         self.session = ClientSession()
