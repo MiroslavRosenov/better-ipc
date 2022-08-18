@@ -134,11 +134,10 @@ class Server:
         self.__servers__["standart"] = Application()
         self.__servers__["standart"].router.add_route("GET", "/", self.__handle_standart__)
 
+        self.__runners__["standart"] = AppRunner(self.__servers__["standart"])
         self.loop.run_until_complete(self.__runners__["standart"].setup())
 
-        self.__runners__["standart"] = AppRunner(self.__servers__["standart"])
         self.__webservers__["standart"] = TCPSite(self.__runners__["standart"], self.host, self.standart_port)
-        
         self.loop.run_until_complete(self.__webservers__["standart"].start())
 
         logger.info("Standart server is ready for use")
@@ -147,11 +146,10 @@ class Server:
             self.__servers__["mutlicast"] = Application()
             self.__servers__["mutlicast"].router.add_route("GET", "/", self.__handle_multicast__)
 
-            self.loop.run_until_complete(self.__runners__["mutlicast"].setup())
-            
             self.__runners__["mutlicast"] = AppRunner(self.__servers__["mutlicast"])
+            self.loop.run_until_complete(self.__runners__["mutlicast"].setup())
+
             self.__webservers__["mutlicast"] = TCPSite(self.__runners__["mutlicast"], self.host, self.multicast_port)
-            
             self.loop.run_until_complete(self.__webservers__["mutlicast"].start())
 
             logger.info("Mutlicast server is ready for use")
