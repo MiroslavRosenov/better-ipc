@@ -65,6 +65,7 @@ class Client:
 
     async def __aenter__(self) -> Client:
         self.session = ClientSession()
+        await self.__init_socket__()
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:

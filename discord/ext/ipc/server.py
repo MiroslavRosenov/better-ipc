@@ -200,7 +200,7 @@ class Server:
         logger.debug(f"Receiving request: {request!r}")
 
         endpoint: Optional[RouteFunc] = request.get("endpoint")
-        headers: Dict = request.get("headers")
+        headers: Dict = request.get("headers", {})
         authorization: Optional[str] = headers.get("Authorization")
 
         if request.get("connection_test"):
@@ -227,7 +227,7 @@ class Server:
                     "code": 404
                 }
 
-            elif multicast and not endpoint.__multicasted__:
+            elif multicast and not self.endpoints.get(endpoint)[0].__multicasted__:
                 self.bot.dispatch("ipc_error", endpoint, IPCError("The requested is not available for multicast connections!"))
                 response = {
                     "error": "The requested route is not available for multicast connections!",
@@ -235,7 +235,7 @@ class Server:
                 }
                 
             else:
-                endpoint, payload_cls = Server.endpoints.get(endpoint)
+                endpoint, payload_cls = self.endpoints.get(endpoint)
                 attempted_cls = self.__get_parent__(endpoint)
                     
                 if attempted_cls:
