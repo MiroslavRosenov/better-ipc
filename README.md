@@ -73,13 +73,12 @@ class Routes(commands.Cog):
         if not hasattr(bot, "ipc"):
             bot.ipc = ipc.Server(self.bot, secret_key="🐼")
     
-    @commands.Cog.listener()
-    async def on_cog_load(self) -> None:
+    async def cog_load(self) -> None:
         await self.bot.ipc.start()
 
-    @commands.Cog.listener()
-    async def on_cog_unload(self) -> None:
+    async def cog_unload(self) -> None:
         await self.bot.ipc.stop()
+        self.bot.ipc = None
 
     @route()
     async def get_user_data(self, data: ClientPayload) -> Dict:
