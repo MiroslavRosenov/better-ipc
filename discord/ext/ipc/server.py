@@ -283,6 +283,7 @@ class Server:
         Starts all necessary processes for the servers and runners to work properly
 
         """
+        self.loop = asyncio.get_event_loop()
         await self.__create_server__("standart", self.standart_port, self.__handle_standart__)
         
         if self.do_multicast:
@@ -291,7 +292,7 @@ class Server:
         if self.bot.is_ready():
             self.bot.dispatch("ipc_ready")
         else:
-            await self.bot.wait_until_ready()
+            self.loop.create_task(self.bot.wait_until_ready())
             self.bot.dispatch("ipc_ready")
 
     async def stop(self) -> None:
