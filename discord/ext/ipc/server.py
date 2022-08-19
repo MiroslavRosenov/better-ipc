@@ -182,23 +182,15 @@ class Server:
         logger.debug(f"Receiving request: {request!r}")
 
         endpoint: Optional[RouteFunc] = request.get("endpoint")
-        headers: Dict = request.get("headers", {})
-        authorization: Optional[str] = headers.get("Authorization")
+        secret_key: Optional[str] = websocket.headers.get("Secret_key")
 
         if request.get("connection_test"):
             return await websocket.send_json({"code": 200})
 
-        elif authorization != self.secret_key:
+        elif secret_key != self.secret_key:
             self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (invalid token provided)!"))
             response = {
                 "error": "Received unauthorized request (invalid token provided)!", 
-                "code": 403
-            }
-
-        if not headers or headers.get("Authorization") != self.secret_key:
-            self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (invalid or no token provided)!"))
-            response = {
-                "error": "Received unauthorized request (invalid or no token provided)!", 
                 "code": 403
             }
         else:

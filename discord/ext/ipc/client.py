@@ -26,7 +26,6 @@ class Client:
     
     Handles the web application side requests to the bot process 
     (intented to work as asynchronous context manager)
-
     Parameters:
     ----------
     host: :str:`str`
@@ -43,7 +42,6 @@ class Client:
         Please keep in mind that multicast clients cannot request routes that are only allowed for standard connections!
     """
     ws = None
-    session = None
     logger = logging.getLogger(__name__)
 
     def __init__(
@@ -67,36 +65,38 @@ class Client:
         return f"ws://{self.host}:{self.standard_port}"
 
     async def __aenter__(self) -> Client:
-        self.session = ClientSession()
         await self.__init_socket__()
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
-        await self.session.close()
         await self.ws.close()
-
-        self.session = None
         self.ws = None
 
     async def __init_socket__(self) -> None:
         self.logger.debug("Initiating websocket connection")
 
-        try:
-            self.ws = await self.session.ws_connect(self.url, autoping=False, autoclose=False)
-        except (ClientConnectorError, ClientConnectionError):
-            raise NotConnected("WebSocket connection failed, the server is unreachable.")
+        async with ClientSession() as session:
+            try:
+                self.ws = await session.ws_connect(
+                    self.url, 
+                    autoping=False, 
+                    autoclose=False,
+                    headers={
+                        "Secret_key": self.secret_key
+                    }
+                )
+            except (ClientConnectorError, ClientConnectionError):
+                raise NotConnected("WebSocket connection failed, the server is unreachable.")
 
         if await self.is_alive():
             self.logger.debug(f"Client connected to {self.url!r}")
         else:
-            await self.session.close()
             raise NotConnected("WebSocket connection failed, the server is unreachable.")
 
     async def __retry__(self, endpoint: str, **kwargs: Any) -> WSCloseCode:
         payload = {
             "endpoint": endpoint,
-            "data": kwargs,
-            "headers": {"Authorization": self.secret_key},
+            "data": kwargs
         }
         try:
             await self.ws.send_json(payload)
@@ -108,7 +108,6 @@ class Client:
 
     async def is_alive(self) -> bool:
         """|coro|
-
         Performs a test to the connetion state
         
         """
@@ -127,9 +126,7 @@ class Client:
 
     async def request(self, endpoint: str, **kwargs: Any) -> Optional[Dict]:
         """|coro|
-
         Make a request to the IPC server process.
-
         Parameters
         ----------
         endpoint: `str`
@@ -137,12 +134,14 @@ class Client:
         **kwargs
             The data to send to the endpoint
         """
+        if not self.ws:
+            raise ClientUsageError()
+
         self.logger.debug(f"Sending request to {endpoint!r} with %r", kwargs)
         
         payload = {
             "endpoint": endpoint,
-            "data": kwargs,
-            "headers": {"Authorization": self.secret_key},
+            "data": kwargs
         }
 
         self.logger.debug("Sending playload: %r", payload)
