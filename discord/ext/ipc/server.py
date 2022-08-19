@@ -7,35 +7,10 @@ from aiohttp import WSMessage
 from .errors import *
 from .objects import ClientPayload
 
-from typing import (
-    TYPE_CHECKING,
-    Any, 
-    Optional,
-    Callable,
-    ClassVar,
-    TypeVar,
-    Dict,
-    Union,
-    Type,
-)
-
-from aiohttp.web import (
-    WebSocketResponse, 
-    Application,
-    AppRunner,
-    TCPSite,
-    Request
-)
-
-from aiohttp.web_urldispatcher import (
-    Handler
-)
-
-from discord.ext.commands import (
-    Bot, 
-    AutoShardedBot, 
-    Cog
-)
+from typing import TYPE_CHECKING, Any,  Optional, Callable, ClassVar, TypeVar, Dict, Union, Type
+from aiohttp.web import WebSocketResponse, Application, AppRunner, TCPSite, Request
+from aiohttp.web_urldispatcher import Handler
+from discord.ext.commands import Bot, AutoShardedBot, Cog
 
 if TYPE_CHECKING:
     from typing_extensions import ParamSpec, TypeAlias

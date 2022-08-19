@@ -5,27 +5,17 @@ import logging
 import time
 
 from .errors import *
+from types import TracebackType
+from typing import Any, Dict, Optional, Type,  Union
+from aiohttp import ClientConnectorError, ClientConnectionError, ClientSession, WSCloseCode,WSMsgType
 
-from typing import (
-    Dict,
-    Optional, 
-    Union, 
-    Any
-)
-
-from aiohttp import (
-    ClientConnectorError,
-    ClientConnectionError,
-    ClientSession,
-    WSCloseCode,
-    WSMsgType,
-)
 
 class Client:
     """|class|
     
     Handles the web application side requests to the bot process 
     (intented to work as asynchronous context manager)
+
     Parameters:
     ----------
     host: :str:`str`
@@ -41,8 +31,6 @@ class Client:
         
         Please keep in mind that multicast clients cannot request routes that are only allowed for standard connections!
     """
-    ws = None
-    logger = logging.getLogger(__name__)
 
     def __init__(
         self,
@@ -58,6 +46,10 @@ class Client:
         self.multicast_port = multicast_port
         self.do_multicast = do_multicast
 
+        self.ws = None
+        self.logger = logging.getLogger(__name__)
+        self.lock = asyncio.Lock()
+
     @property
     def url(self) -> str:
         if self.do_multicast:
@@ -65,28 +57,32 @@ class Client:
         return f"ws://{self.host}:{self.standard_port}"
 
     async def __aenter__(self) -> Client:
+        self.session = ClientSession()
         await self.__init_socket__()
         return self
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_value: Optional[BaseException],
+        traceback: Optional[TracebackType],
+    ) -> None:
         await self.ws.close()
-        self.ws = None
+        await self.session.close()
 
     async def __init_socket__(self) -> None:
         self.logger.debug("Initiating websocket connection")
 
-        async with ClientSession() as session:
-            try:
-                self.ws = await session.ws_connect(
-                    self.url, 
-                    autoping=False, 
-                    autoclose=False,
-                    headers={
-                        "Secret_key": self.secret_key
-                    }
-                )
-            except (ClientConnectorError, ClientConnectionError):
-                raise NotConnected("WebSocket connection failed, the server is unreachable.")
+        try:
+            self.ws = await self.session.ws_connect(
+                self.url, 
+                autoclose=False,
+                headers={
+                    "Secret_key": self.secret_key
+                }
+            )
+        except (ClientConnectionError, ClientConnectorError):
+            raise NotConnected("WebSocket connection failed, the server is unreachable.")
 
         if await self.is_alive():
             self.logger.debug(f"Client connected to {self.url!r}")
@@ -102,9 +98,9 @@ class Client:
             await self.ws.send_json(payload)
         except Exception as e:
             self.logger.error("Failed to send payload", exc_info=e)
-            return WSCloseCode.INTERNAL_ERROR
+            return False
         else:
-            return WSCloseCode.OK
+            return True
 
     async def is_alive(self) -> bool:
         """|coro|
@@ -117,7 +113,10 @@ class Client:
 
         start = time.perf_counter()
         await self.ws.send_json(payload)
-        r = await self.ws.receive()
+        
+        async with self.lock:
+            r = await self.ws.receive()
+        
         self.logger.debug(f"Connection to websocket took {time.perf_counter() - start:,} ms")
         
         if r.type in (WSMsgType.CLOSE, WSMsgType.CLOSED):
@@ -153,15 +152,16 @@ class Client:
             
             return await self.__retry__(endpoint, **kwargs)
 
-        recv = await self.ws.receive()
+        async with self.lock:
+            recv = await self.ws.receive()
 
         self.logger.debug("Receiving response: %r", recv)
 
         if recv.type is WSMsgType.CLOSED:
             self.logger.error("WebSocket connection unexpectedly closed, attempting to retry in 3 seconds.")
             await asyncio.sleep(3)
-
-            if await self.__retry__(endpoint, **kwargs) == WSCloseCode.INTERNAL_ERROR:
+            
+            if not await self.__retry__(endpoint, **kwargs):
                 self.logger.error("Could not do perform the request after reattempt")
         
         elif recv.type is WSMsgType.ERROR:
