@@ -78,7 +78,7 @@ class Client:
                 self.url, 
                 autoclose=False,
                 headers={
-                    "Secret_key": self.secret_key
+                    "Secret-Key": self.secret_key
                 }
             )
         except (ClientConnectionError, ClientConnectorError):

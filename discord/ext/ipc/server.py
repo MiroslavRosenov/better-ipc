@@ -157,7 +157,7 @@ class Server:
         logger.debug(f"Receiving request: {request!r}")
 
         endpoint: Optional[RouteFunc] = request.get("endpoint")
-        secret_key: Optional[str] = websocket.headers.get("Secret_key")
+        secret_key: Optional[str] = websocket._req.headers.get("Secret-Key")
 
         if request.get("connection_test"):
             return await websocket.send_json({"code": 200})
