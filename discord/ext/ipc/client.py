@@ -9,9 +9,6 @@ from types import TracebackType
 from typing import Any, Dict, Optional, Type,  Union
 from aiohttp import ClientConnectorError, ClientConnectionError, ClientSession, WSCloseCode,WSMsgType
 
-
-
-
 class Client:
     """|class|
     
@@ -80,4 +77,4 @@ class Client:
             The data for the endpoint
         """
         async with Session(self.url, self.secret_key) as session:
-            await session.request(endpoint, **kwargs)
+            return await session.request(endpoint, **kwargs)
