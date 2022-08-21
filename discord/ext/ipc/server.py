@@ -20,40 +20,6 @@ if TYPE_CHECKING:
     
     RouteFunc: TypeAlias = Callable[P, T]
 
-logger = logging.getLogger(__name__)
-
-
-def route(name: Optional[str] = None, multicast: bool = True) -> Callable[[RouteFunc], RouteFunc]:
-    """|method|
-
-    Used to register a coroutine as an endpoint
-
-    Parameters
-    ----------
-    name: :class:`str`
-        The endpoint name. If not provided the method name will be used.
-    multicast :class:`bool`
-        Should the enpoint be avaiable for multicast or not. If this is set to False only standard connection can access it.
-    """
-    logger.warning(
-        "This function will be deprecated later "
-        "in the future. Consider using `Server.route`."
-    )
-
-    def decorator(func: RouteFunc) -> RouteFunc:
-        for cls in func.__annotations__.values():
-            if isinstance(cls, ClientPayload):
-                payload_cls = cls
-                break
-        else:
-            payload_cls = ClientPayload
-        func.__multicasted__ = multicast
-
-        Server.endpoints[name or func.__name__] = (func, payload_cls)
-        return func
-    return decorator
-
-
 class Server:
     """|class|
     
@@ -76,9 +42,6 @@ class Server:
         Should the multicasting be allowed (the default is `True`)
     """
 
-    __servers__: Dict[str, Application] = {}
-    __runners__: Dict[str, AppRunner] = {}
-    __webservers__: Dict[str, AppRunner] = {}
     endpoints: ClassVar[Dict[str, Tuple[RouteFunc, Type[ClientPayload]]]] = {}
 
     def __init__(
@@ -96,6 +59,15 @@ class Server:
         self.standard_port = standard_port
         self.multicast_port = multicast_port
         self.do_multicast = do_multicast
+
+        self.logger = logging.getLogger(__name__)
+
+        self.__servers__: Dict[str, Application] = {}
+        self.__runners__: Dict[str, AppRunner] = {}
+        self.__webservers__: Dict[str, AppRunner] = {}
+
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} endpoints={len(self.endpoints)} started={self.started} standard_port={self.standard_port!r} multicast_port={self.multicast_port!r} do_multicast={self.do_multicast}>"
 
     def __get_parent__(self, func: RouteFunc) -> Optional[Cog]:
         for cog in self.bot.cogs.values():
@@ -125,16 +97,16 @@ class Server:
                 payload_cls = ClientPayload
             func.__multicasted__ = multicast
 
-            Server.endpoints[name or func.__name__] = (func, payload_cls)
+            cls.endpoints[name or func.__name__] = (func, payload_cls)
             return func
         return decorator
 
     @property
-    async def started(self) -> bool:
+    def started(self) -> bool:
         return len(self.__servers__) > 0
 
     async def __handle_standard__(self, original_request: Request) -> None:
-        logger.debug("Handing new IPC request")
+        self.logger.debug("Handing new IPC request")
 
         websocket = WebSocketResponse()
         await websocket.prepare(original_request)
@@ -143,7 +115,7 @@ class Server:
             asyncio.create_task(self.__process_request__(websocket, message, False))
 
     async def __handle_multicast__(self, original_request: Request) -> None:
-        logger.debug("Handing new IPC request")
+        self.logger.debug("Handing new IPC request")
 
         websocket = WebSocketResponse()
         await websocket.prepare(original_request)
@@ -154,7 +126,7 @@ class Server:
     async def __process_request__(self, websocket: WebSocketResponse, message: WSMessage, multicast: bool) -> None:
         request = message.json()
 
-        logger.debug(f"Receiving request: {request!r}")
+        self.logger.debug(f"Receiving request: {request!r}")
 
         endpoint: Optional[RouteFunc] = request.get("endpoint")
         secret_key: Optional[str] = websocket._req.headers.get("Secret-Key")
@@ -209,7 +181,7 @@ class Server:
                         "code": 500,
                     }
 
-                    logger.error(f"Received error while executing {endpoint!r}", exc_info=exception)
+                    self.logger.error(f"Received error while executing {endpoint!r}", exc_info=exception)
         try:
             response = response or {} 
             if not isinstance(response, Dict):
@@ -222,17 +194,19 @@ class Server:
                     "code": 500
                 }
 
-                logger.debug(f"Sending Response: {response!r}")
+                self.logger.debug(f"Sending Response: {response!r}")
                 return await websocket.send_json(response)
 
-            if not response.get("code"): 
+            if not response.get("code"):
                 response["code"] = 200
+
+            response["__bot__"] = self.bot.user.id
 
             await websocket.send_json(response)
         except Exception:
             self.bot.dispatch("ipc_error", endpoint, IPCError("Could not send JSON data to websocket!"))
         else:
-            logger.debug(f"Sending response: {response!r}")
+            self.logger.debug(f"Sending response: {response!r}")
 
     async def __create_server__(self, name: str, port: int, handler: Handler) -> None:
         self.__servers__[name] = Application()
@@ -244,7 +218,7 @@ class Server:
         self.__webservers__[name] = TCPSite(self.__runners__[name], self.host, port)
         await self.__webservers__[name].start()
 
-        logger.info(f"{name.title()!r} server is ready for use")
+        self.logger.info(f"{name.title()!r} server is ready for use")
 
     async def start(self) -> None:
         """|coro|
@@ -272,10 +246,10 @@ class Server:
         """
 
         for server, runner in zip(self.__servers__.items(), self.__runners__.items()):
-            logger.info(f"Stopping {server[0]} server")
+            self.logger.info(f"Stopping {server[0]} server")
             await server[1].shutdown()
 
-            logger.info(f"Stopping {runner[0]} runner")
+            self.logger.info(f"Stopping {runner[0]} runner")
             await runner[1].cleanup()
 
         self.__servers__ = self.__runners__ = self.__webservers__ = {}

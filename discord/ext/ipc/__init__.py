@@ -11,13 +11,11 @@ try:
 except ImportError:
     raise RuntimeError("You must have discord.py installed!")
 else:
-    if not discord.__version__.startswith("2.0"):
-        raise RuntimeError(
-            "You must have discord.py 2.0 installed in order for Better IPC to work!"
-        )
+    if not discord.__version__.startswith("2"):
+        raise RuntimeError("You must have discord.2. installed in order for Better IPC to work!")
 
 
-__version__ = "1.1.3"
+__version__ = "1.1.4"
 __title__ = "better-ipc"
 __author__ = "DaPandaOfficial"
 

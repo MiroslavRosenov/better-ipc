@@ -8,8 +8,6 @@ class MyBot(commands.Bot):
         super().__init__(
             command_prefix="$.",
             intents=intents,
-            case_insensitive=True,
-            status=discord.Status.online
         )
 
         self.ipc = ipc.Server(self, secret_key="🐼")

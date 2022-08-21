@@ -4,10 +4,12 @@ import asyncio
 import logging
 import time
 
-from .errors import *
+# from .errors import *
 from types import TracebackType
 from typing import Any, Dict, Optional, Type,  Union
 from aiohttp import ClientConnectorError, ClientConnectionError, ClientSession, WSCloseCode,WSMsgType
+
+from discord.ext.ipc.pool import Session
 
 
 class Client:
@@ -46,9 +48,10 @@ class Client:
         self.multicast_port = multicast_port
         self.do_multicast = do_multicast
 
-        self.ws = None
         self.logger = logging.getLogger(__name__)
-        self.lock = asyncio.Lock()
+
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} standard_port={self.standard_port!r} multicast_port={self.multicast_port!r} do_multicast={self.do_multicast}>"
 
     @property
     def url(self) -> str:
@@ -56,119 +59,25 @@ class Client:
             return f"ws://{self.host}:{self.multicast_port}"
         return f"ws://{self.host}:{self.standard_port}"
 
-    async def __aenter__(self) -> Client:
-        self.session = ClientSession()
-        await self.__init_socket__()
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: Optional[Type[BaseException]],
-        exc_value: Optional[BaseException],
-        traceback: Optional[TracebackType],
-    ) -> None:
-        await self.ws.close()
-        await self.session.close()
-
-    async def __init_socket__(self) -> None:
-        self.logger.debug("Initiating websocket connection")
-
-        try:
-            self.ws = await self.session.ws_connect(
-                self.url, 
-                autoclose=False,
-                headers={
-                    "Secret-Key": self.secret_key
-                }
-            )
-        except (ClientConnectionError, ClientConnectorError):
-            raise NotConnected("WebSocket connection failed, the server is unreachable.")
-
-        if await self.is_alive():
-            self.logger.debug(f"Client connected to {self.url!r}")
-        else:
-            raise NotConnected("WebSocket connection failed, the server is unreachable.")
-
-    async def __retry__(self, endpoint: str, **kwargs: Any) -> WSCloseCode:
-        payload = {
-            "endpoint": endpoint,
-            "data": kwargs
-        }
-        try:
-            await self.ws.send_json(payload)
-        except Exception as e:
-            self.logger.error("Failed to send payload", exc_info=e)
-            return False
-        else:
-            return True
-
     async def is_alive(self) -> bool:
         """|coro|
+
         Performs a test to the connetion state
         
         """
-        payload = {
-            "connection_test": True
-        }
-
-        start = time.perf_counter()
-        await self.ws.send_json(payload)
-        
-        async with self.lock:
-            r = await self.ws.receive()
-        
-        self.logger.debug(f"Connection to websocket took {time.perf_counter() - start:,} ms")
-        
-        if r.type in (WSMsgType.CLOSE, WSMsgType.CLOSED):
-            return False
-        return True
+        async with Session(self.url, self.secret_key) as session:
+            return await session.is_alive()
 
     async def request(self, endpoint: str, **kwargs: Any) -> Optional[Dict]:
         """|coro|
-        Make a request to the IPC server process.
-        Parameters
+        
+        Make a request to the server process.
+
         ----------
         endpoint: `str`
             The endpoint to request on the server
         **kwargs
             The data to send to the endpoint
         """
-        if not self.ws:
-            raise ClientUsageError()
-
-        self.logger.debug(f"Sending request to {endpoint!r} with %r", kwargs)
-        
-        payload = {
-            "endpoint": endpoint,
-            "data": kwargs
-        }
-
-        self.logger.debug("Sending playload: %r", payload)
-
-        try:
-            await self.ws.send_json(payload)
-        except ConnectionResetError:
-            self.logger.error("Cannot write to closing transport, restarting the connection in 3 seconds. (Could be raised if the client is on different machine that the server)")
-            
-            return await self.__retry__(endpoint, **kwargs)
-
-        async with self.lock:
-            recv = await self.ws.receive()
-
-        self.logger.debug("Receiving response: %r", recv)
-
-        if recv.type is WSMsgType.CLOSED:
-            self.logger.error("WebSocket connection unexpectedly closed, attempting to retry in 3 seconds.")
-            await asyncio.sleep(3)
-            
-            if not await self.__retry__(endpoint, **kwargs):
-                self.logger.error("Could not do perform the request after reattempt")
-        
-        elif recv.type is WSMsgType.ERROR:
-            self.logger.error("Received WSMsgType of ERROR, instead of TEXT/BYTES!")
-
-        else:
-            data = recv.json()
-            if int(data["code"]) != 200:
-                self.logger.warning(f"Received code {data['code']!r} insted of usual 200")
-            return data
+        async with Session(self.url, self.secret_key) as session:
+            await session.request(endpoint, kwargs)

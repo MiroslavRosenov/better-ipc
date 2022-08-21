@@ -1,6 +1,6 @@
 from typing import Dict
 from discord.ext import commands, ipc
-from discord.ext.ipc.server import route
+from discord.ext.ipc.server import Server
 from discord.ext.ipc.objects import ClientPayload
 
 class Routes(commands.Cog):
@@ -14,8 +14,9 @@ class Routes(commands.Cog):
 
     async def cog_unload(self) -> None:
         await self.bot.ipc.stop()
+        self.bot.ipc = None
     
-    @route()
+    @Server.route()
     async def get_user_data(self, data: ClientPayload) -> Dict:
         user = self.bot.get_user(data.user_id)
         return user._to_minimal_user_json()

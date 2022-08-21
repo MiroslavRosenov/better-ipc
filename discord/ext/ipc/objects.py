@@ -48,8 +48,13 @@ class ClientPayload:
         return f"<{self.__class__.__name__} lenght={self.lenght} endpoint={self.endpoint!r}>"
 
     @property
-    def raw(self):
+    def raw(self) -> Dict:
         return self.payload
+
+    @property
+    def bot(self) -> Optional[int]:
+        """Returns the bot which the endpoint was used."""
+        return self.payload.get("__bot__")
 
     def items(self):
         """|method|
