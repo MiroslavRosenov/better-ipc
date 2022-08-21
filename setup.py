@@ -10,7 +10,7 @@ with open("requirements.txt") as stream:
     dependencies = [x for x in raw if x.startswith("git+")]
 
 this_directory = Path(__file__).parent
-long_description = (this_directory / "README.md").read_text()
+long_description = (this_directory / "README.md").read_text(encoding="utf8")
 
 _version_re = re.compile(r'__version__\s+=\s+(.*)')
 
