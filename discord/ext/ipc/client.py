@@ -4,12 +4,12 @@ import asyncio
 import logging
 import time
 
-# from .errors import *
+from .pool import Session
 from types import TracebackType
 from typing import Any, Dict, Optional, Type,  Union
 from aiohttp import ClientConnectorError, ClientConnectionError, ClientSession, WSCloseCode,WSMsgType
 
-from discord.ext.ipc.pool import Session
+
 
 
 class Client:
@@ -80,4 +80,4 @@ class Client:
             The data to send to the endpoint
         """
         async with Session(self.url, self.secret_key) as session:
-            await session.request(endpoint, kwargs)
+            await session.request(endpoint, **kwargs)
