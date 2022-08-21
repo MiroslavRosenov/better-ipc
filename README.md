@@ -14,13 +14,26 @@ This library is heavily based on [discord-ext-ipc](https://github.com/Ext-Creato
 
 # Installation
 > ### Stable version
+#### For Linux
 ```shell
 python3 -m pip install -U better-ipc
 ```
+#### For Windows
+```shell
+py -m pip install -U better-ipc
+```
+
 > ### Development version
+#### For Linux
 ```shell
 python3 -m pip install -U git+https://github.com/MiroslavRosenov/better-ipc
 ```
+#### For Windows
+```shell
+py -m pip install -U git+https://github.com/MiroslavRosenov/better-ipc
+```
+
+
 # Support
 
 You can join the support server [here](https://discord.gg/Rpg7zjFYsh)
@@ -33,7 +46,7 @@ import discord
 
 from typing import Dict
 from discord.ext import commands, ipc
-from discord.ext.ipc.server import route
+from discord.ext.ipc.server import Server
 from discord.ext.ipc.objects import ClientPayload
 
 class MyBot(commands.Bot):
@@ -43,8 +56,6 @@ class MyBot(commands.Bot):
         super().__init__(
             command_prefix="$.",
             intents=intents,
-            case_insensitive=True,
-            status=discord.Status.online
         )
 
         self.ipc = ipc.Server(self, secret_key="🐼")
@@ -52,7 +63,7 @@ class MyBot(commands.Bot):
     async def setup_hook(self) -> None:
         await self.ipc.start()
 
-    @route()
+    @Server.route()
     async def get_user_data(self, data: ClientPayload) -> Dict:
         user = self.get_user(data.user_id)
         return user._to_minimal_user_json()
@@ -63,7 +74,7 @@ class MyBot(commands.Bot):
 ```python
 from typing import Dict
 from discord.ext import commands, ipc
-from discord.ext.ipc.server import route
+from discord.ext.ipc.server import Server
 from discord.ext.ipc.errors import IPCError
 from discord.ext.ipc.objects import ClientPayload
 
@@ -80,7 +91,7 @@ class Routes(commands.Cog):
         await self.bot.ipc.stop()
         self.bot.ipc = None
 
-    @route()
+    @Server.route()
     async def get_user_data(self, data: ClientPayload) -> Dict:
         user = self.bot.get_user(data.user_id)
         return user._to_minimal_user_json()
@@ -100,8 +111,7 @@ ipc = Client(secret_key="🐼")
 
 @app.route('/')
 async def main():
-    async with ipc as conn:
-        return await conn.request("get_user_data", user_id=383946213629624322)
+    return await ipc.request("get_user_data", user_id=383946213629624322)
 
 if __name__ == '__main__':
     app.run()

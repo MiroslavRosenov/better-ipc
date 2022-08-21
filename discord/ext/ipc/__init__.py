@@ -12,7 +12,7 @@ except ImportError:
     raise RuntimeError("You must have discord.py installed!")
 else:
     if not discord.__version__.startswith("2"):
-        raise RuntimeError("You must have discord.2. installed in order for Better IPC to work!")
+        raise RuntimeError("You must have the latest version of discord.py for Better IPC to run without any issues!") #smh >:C
 
 
 __version__ = "1.1.4"

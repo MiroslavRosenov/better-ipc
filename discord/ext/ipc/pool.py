@@ -96,8 +96,6 @@ class Session:
             "data": kwargs
         }
 
-        self.logger.debug(f"Sending request to {endpoint!r} with %r", kwargs)
-
         try:
             await self.ws.send_json(payload)
         except ConnectionResetError:
@@ -105,7 +103,7 @@ class Session:
                 "Cannot write to closing transport, restarting the connection in 3 seconds. "
                 "(Could be raised if the client is on different machine that the server)"
             )
-
+            
             return await self.__retry__(endpoint, **kwargs)
 
         recv = await self.ws.receive()

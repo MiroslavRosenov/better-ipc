@@ -76,8 +76,8 @@ class Client:
         ----------
         endpoint: `str`
             The endpoint to request on the server
-        **kwargs
-            The data to send to the endpoint
+        **kwargs: `Any`
+            The data for the endpoint
         """
         async with Session(self.url, self.secret_key) as session:
             await session.request(endpoint, **kwargs)
