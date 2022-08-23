@@ -235,8 +235,7 @@ class Server:
         if self.bot.is_ready():
             self.bot.dispatch("ipc_ready")
         else:
-            self.loop.create_task(self.bot.wait_until_ready())
-            self.bot.dispatch("ipc_ready")
+            self.loop.create_task(self.wait_bot_is_ready())
 
     async def stop(self) -> None:
         """|coro|
@@ -253,3 +252,7 @@ class Server:
             await runner[1].cleanup()
 
         self.__servers__ = self.__runners__ = self.__webservers__ = {}
+        
+    async def wait_bot_is_ready(self) -> None:
+        await self.bot.wait_until_ready()
+        self.bot.dispatch("ipc_ready")
