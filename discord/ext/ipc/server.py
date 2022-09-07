@@ -200,8 +200,6 @@ class Server:
             if not response.get("code"):
                 response["code"] = 200
 
-            response["__bot__"] = self.bot.user.id
-
             await websocket.send_json(response)
         except Exception:
             self.bot.dispatch("ipc_error", endpoint, IPCError("Could not send JSON data to websocket!"))
