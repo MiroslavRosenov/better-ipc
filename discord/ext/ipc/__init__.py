@@ -15,7 +15,7 @@ else:
         raise RuntimeError("You must have the latest version of discord.py for Better IPC to run without any issues!") #smh >:C
 
 
-__version__ = "1.1.4"
+__version__ = "2.0.0"
 __title__ = "better-ipc"
 __author__ = "DaPandaOfficial"
 

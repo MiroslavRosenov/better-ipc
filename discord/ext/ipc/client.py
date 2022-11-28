@@ -1,34 +1,31 @@
 from __future__ import annotations
 
-import asyncio
 import logging
-import time
+import json
+import contextlib
+import uuid
 
-from .pool import Session
-from types import TracebackType
-from typing import Any, Dict, Optional, Type,  Union
-from aiohttp import ClientConnectorError, ClientConnectionError, ClientSession, WSCloseCode,WSMsgType
+from typing import Optional, Union, Any, Dict
+from websockets.client import connect, WebSocketClientProtocol 
+from discord.ext.ipc.objects import ServerResposne
+
 
 class Client:
-    """|class|
-    
-    Handles the web application side requests to the bot process 
-    (intented to work as asynchronous context manager)
+    """
+    The client that connects to a Server and sends requests to it
 
     Parameters:
     ----------
-    host: :str:`str`
-        The IP adress that hosts the server (the default is `127.0.0.1`).
-    secret_key: :str:`str`
-        The authentication that is used when creating the server (the default is `None`).
-    standard_port: :str:`int`
-        The port for the standard server (the default is `1025`)
-    multicast_port: :int:`int`
-        The port for the multicasting server (the default is `20000`)
-    do_multicast: :bool:`bool`
-        Should the client perform standard or multicast connection (the default is `True`)
-        
-        Please keep in mind that multicast clients cannot request routes that are only allowed for standard connections!
+    host: `str`
+        The address for the server (the default host is 127.0.0.1 and you don't wanna change this in most cases).
+    secret_key: `str`
+        This string will be used as authentication password while making requests.
+    standard_port: `int`
+        The port to run the standard server (the default is 1025).
+    multicast_port: `int`
+        The port to run the multicasting server (the default is 20000).
+    do_multicast: `bool`
+        Should the client perform standard or multicast connection (this is enable by default)
     """
 
     def __init__(
@@ -45,7 +42,9 @@ class Client:
         self.multicast_port = multicast_port
         self.do_multicast = do_multicast
 
+        self.id = uuid.uuid4()
         self.logger = logging.getLogger(__name__)
+        self.connection: Optional[WebSocketClientProtocol] = None
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} standard_port={self.standard_port!r} multicast_port={self.multicast_port!r} do_multicast={self.do_multicast}>"
@@ -56,19 +55,10 @@ class Client:
             return f"ws://{self.host}:{self.multicast_port}"
         return f"ws://{self.host}:{self.standard_port}"
 
-    async def is_alive(self) -> bool:
-        """|coro|
-
-        Performs a test to the connetion state
-        
-        """
-        async with Session(self.url, self.secret_key) as session:
-            return await session.is_alive()
-
-    async def request(self, endpoint: str, **kwargs: Any) -> Optional[Dict]:
+    async def request(self, endpoint: str, **kwargs: Any) -> ServerResposne:
         """|coro|
         
-        Make a request to the server process.
+        Makes a request to the server URL.
 
         ----------
         endpoint: `str`
@@ -76,5 +66,17 @@ class Client:
         **kwargs: `Any`
             The data for the endpoint
         """
-        async with Session(self.url, self.secret_key) as session:
-            return await session.request(endpoint, **kwargs)
+        
+        if not self.connection:
+            self.connection = await connect(self.url, extra_headers={"ID": str(self.id)})
+        
+        await self.connection.send(json.dumps({
+            "endpoint": endpoint,
+            "secret": str(self.secret_key),
+            "kwargs": {
+                **kwargs
+            },
+        }))
+
+        return ServerResposne(await self.connection.recv())
+    

@@ -1,25 +1,32 @@
-from typing import Dict, Any, Optional, TypeVar
+import json
+import enum
+from typing import Dict, Any, Optional, Union
 
-PT = TypeVar("PT")
+class StatusEnum(enum.Enum):
+    OK = 200
+    FORBIDDEN = 403
+    NOT_FOUND= 404
+    INTERNAL_ERROR = 500
 
 class ClientPayload:
-    """|class|
-
+    """
     The base class for the payload which is sent to the endpoint
-    when the call is made. This can be subclassed and custom payload
+    when the call is made. 
+    
+    This can be subclassed and custom payload
     can be used. If you do not Typehint the function with the custom
     payload then it will automatically use this base payload,
     but keys and values can be accessed like a dictionary or using `X.y`.
 
     Parameters:
     ----------
-    payload: :class:`Dict`
+    payload: Dict`
         The payload to be converted.
 
     Attributes
     ----------
-    lenght: `int`
-        The lenght of the payload.
+    length: `int`
+        The length of the payload.
     endpoint: `str`
         The endpoint which was called.
     data: `Dict`
@@ -28,9 +35,9 @@ class ClientPayload:
 
     def __init__(self, payload: Dict[str, Any]):
         self.payload = payload
-        self.lenght: int = len(payload)
+        self.length: int = len(payload)
         self.endpoint: Optional[str] = payload.get("endpoint")
-        self.data: Optional[Dict[str, Any]] = payload.get("data")
+        self.data: Optional[Dict[str, Any]] = payload.get("kwargs")
 
     def __getitem__(self, __k: str):
         return self.data[__k]
@@ -42,19 +49,17 @@ class ClientPayload:
         try:
             return object.__getattribute__(self, __name)
         except AttributeError:
-            return self.data[__name]
+            try:
+                return self.data[__name]
+            except KeyError:
+                raise AttributeError(__name)
 
     def __repr__(self) -> str:
-        return f"<{self.__class__.__name__} lenght={self.lenght} endpoint={self.endpoint!r}>"
+        return f"<{self.__class__.__name__} length={self.length} endpoint={self.endpoint!r}>"
 
     @property
     def raw(self) -> Dict:
         return self.payload
-
-    @property
-    def bot(self) -> Optional[int]:
-        """Returns the bot which the endpoint was used."""
-        return self.payload.get("__bot__")
 
     def items(self):
         """|method|
@@ -62,3 +67,62 @@ class ClientPayload:
         Returns the payload in the form of dictionary items.
         """
         return self.payload.items()
+
+class ServerResposne:
+    """
+    The class when getting response for the Server
+
+    Parameters:
+    ----------
+    payload: `str`
+        The payload to be converted.
+
+    Attributes
+    ----------
+    response: `Dict | str`
+        Decoded response that is ready for use..
+    error: `Dict | None`
+        Returns dict with exception information (if any).
+    status: `StatusEnum`
+        Raw status code converted to readable data.
+    """
+    def __init__(self, payload: str):
+        self.data: Dict[str, Any] = json.loads(payload)
+        self.decoding: str = self.data.get("decoding")
+
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} response={self.response} status={self.status.name}>"
+    
+    @property
+    def response(self) -> Union[Dict, str]:
+        """|property|
+        
+        Decoded response that is ready for use.
+
+        """
+        if self.decoding == "JSON":
+            return json.loads(self.data["response"])
+        return self.data["response"]
+
+    @property
+    def error(self) -> Optional[Dict[str, Any]]:
+        """|property|
+
+        Optionally returns any errors that from the server side.
+
+        """
+        if (error := self.data.get("error")):
+            return {
+                "error": error,
+                "status": self.status,
+                "details": self.data["error_details"],
+            }
+
+    @property
+    def status(self) -> StatusEnum:
+        """|property|
+        
+        The status code after being converted to `enum.Enum`
+
+        """
+        return StatusEnum(self.data.get("code"))

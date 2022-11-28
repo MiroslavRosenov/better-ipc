@@ -1,2 +1,2 @@
-aiohttp==3.8.1
-git+https://github.com/Rapptz/discord.py
+websockets>=10.4
+discord.py>=2.1.0

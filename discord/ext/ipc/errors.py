@@ -1,30 +1,29 @@
 from typing import Optional, Tuple
 
-class IPCError(Exception):
-    """Common base class for all IPC exceptions"""
+class BaseException(Exception):
+    """Common base class for all exceptions"""
     __slots__: Tuple[str, ...] = ()
-    traceback: Optional[str] = None
+    details: Optional[str] = None
 
+class NoEndpointFoundError(BaseException):
+    """Raised when trying to request an unknown endpoint"""
+    def __init__(self, name: str, *args: object) -> None:
+        super().__init__(*args)
+        self.name = name
 
-class NoEndpointFoundError(IPCError):
-    """Raised upon requesting an invalid endpoint"""
+class MulticastFailure(BaseException):
+    """Raised when calling route that is not multicasted"""
+    def __init__(self, name: str, *args: object) -> None:
+        super().__init__(*args)
+        self.name = name
+
+class InvalidReturn(BaseException):
+    """Raiseed when getting un-serializable objects as response from a route"""
     pass
 
+class ServerAlreadyStarted(BaseException):
+    """Raise trying to start already running server"""
+    def __init__(self, name: str, *args: object) -> None:
+        super().__init__(*args)
+        self.name = name
 
-class ServerConnectionRefusedError(IPCError):
-    """Raised upon a server refusing to connect / not being found"""
-    pass
-
-
-class JSONEncodeError(IPCError):
-    """Raise upon un-serializable objects are given to the IPC"""
-    pass
-
-
-class NotConnected(IPCError):
-    """Raised upon websocket not connected"""
-    pass
-
-class ClientUsageError(IPCError):
-    """Raised upon a Client instance not being used as context manager"""
-    pass

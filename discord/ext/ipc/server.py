@@ -1,57 +1,62 @@
 from __future__ import annotations
 
-import asyncio
 import logging
+import json
+import contextlib
+import inspect
 
-from aiohttp import WSMessage
-from .errors import *
+from discord.ext.commands import Bot, Cog
+from typing import TYPE_CHECKING, Optional, Callable, ClassVar, TypeVar, Union, Type, Coroutine, Tuple, Any, Dict
+
+from websockets.exceptions import ConnectionClosedError, ConnectionClosed
+from websockets.server import WebSocketServerProtocol, serve
+
+from .errors import InvalidReturn, NoEndpointFoundError, MulticastFailure, ServerAlreadyStarted
 from .objects import ClientPayload
 
-from typing import TYPE_CHECKING, Any,  Optional, Callable, ClassVar, TypeVar, Dict, Union, Type
-from aiohttp.web import WebSocketResponse, Application, AppRunner, TCPSite, Request
-from aiohttp.web_urldispatcher import Handler
-from discord.ext.commands import Bot, AutoShardedBot, Cog
 
 if TYPE_CHECKING:
     from typing_extensions import ParamSpec, TypeAlias
     
-    P = ParamSpec('P')
-    T = TypeVar('T')
+    P = ParamSpec("P")
+    T = TypeVar("T")
     
     RouteFunc: TypeAlias = Callable[P, T]
+    Handler: TypeAlias = Coroutine
 
 class Server:
-    """|class|
-    
-    The inter-process communication server. Usually used on the bot process for receiving
-    requests from the client.
+    """
+    The inter-process communication server that is connected with the bot.
 
     Parameters:
     ----------
-    bot: :class:`discord.ext.commands.Bot`
-        Your bot instance
-    host: :str:`str`
-        The IP adress to start the server (the default is `127.0.0.1`).
-    secret_key: :str:`str`
-        Used for authentication when handling requests.
-    standard_port: :str:`int`
-        The port to run the standard server (the default is `1025`)
-    multicast_port: :int:`int`
-        The port to run the multicasting server (the default is `20000`)
-    do_multicast: :bool:`bool`
-        Should the multicasting be allowed (the default is `True`)
+    bot: `Bot`
+        The bot instance.
+    host: `str`
+        The address for the server (the default host is 127.0.0.1 and you don't wanna change this in most cases).
+    secret_key: `str`
+        This string will be used as authentication password while taking requests.
+    standard_port: `int`
+        The port to run the standard server (the default is 1025).
+    multicast_port: `int`
+        The port to run the multicasting server (the default is 20000).
+    do_multicast: `bool`
+        Should the multicasting be allowed (this is enabled by default).
+    logger: `Logger`
+        You can specify the logger for logs related to the lib (the default is discord.ext.ipc.server)
     """
 
     endpoints: ClassVar[Dict[str, Tuple[RouteFunc, Type[ClientPayload]]]] = {}
 
     def __init__(
-        self, 
-        bot: Union[Bot, AutoShardedBot], 
+        self,
+        bot: Bot,
         host: str = "127.0.0.1", 
         secret_key: Union[str, None] = None, 
         standard_port: int = 1025,
         multicast_port: int = 20000,
-        do_multicast: bool = True
+        do_multicast: bool = True,
+        logger: Optional[logging.Logger] = None
     ) -> None:
         self.bot = bot
         self.host = host
@@ -60,16 +65,14 @@ class Server:
         self.multicast_port = multicast_port
         self.do_multicast = do_multicast
 
-        self.logger = logging.getLogger(__name__)
-
-        self.__servers__: Dict[str, Application] = {}
-        self.__runners__: Dict[str, AppRunner] = {}
-        self.__webservers__: Dict[str, AppRunner] = {}
+        self.logger = logger or logging.getLogger(__name__)
+        self.servers: Dict[str, WebSocketServerProtocol] = {}
+        self.connection: Tuple[str, WebSocketServerProtocol] = None
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} endpoints={len(self.endpoints)} started={self.started} standard_port={self.standard_port!r} multicast_port={self.multicast_port!r} do_multicast={self.do_multicast}>"
 
-    def __get_parent__(self, func: RouteFunc) -> Optional[Cog]:
+    def get_cls(self, func: RouteFunc) -> Optional[Cog]:
         for cog in self.bot.cogs.values():
             if func.__name__ in dir(cog):
                 return cog
@@ -89,136 +92,120 @@ class Server:
             Should the enpoint be avaiable for multicast or not. If this is set to False only standard connection can access it.
         """
         def decorator(func: RouteFunc) -> RouteFunc:
-            for _cls in func.__annotations__.values():
-                if isinstance(_cls, ClientPayload):
-                    payload_cls = _cls
+            payload = ClientPayload
+            for annotation in func.__annotations__.values():
+                if inspect.isclass(annotation) and issubclass(annotation, ClientPayload):
+                    payload = annotation
                     break
-            else:
-                payload_cls = ClientPayload
-            func.__multicasted__ = multicast
 
-            cls.endpoints[name or func.__name__] = (func, payload_cls)
+            func.__multicast__ = multicast
+
+            cls.endpoints[name or func.__name__] = (func, payload)
             return func
         return decorator
 
     @property
     def started(self) -> bool:
-        return len(self.__servers__) > 0
+        return len(self.servers) > 0
 
-    async def __handle_standard__(self, original_request: Request) -> None:
-        self.logger.debug("Handing new IPC request")
+    def is_secure(self, message: Union[str, bytes]) -> bool:
+        data: Dict[str, Any] = json.loads(message)
 
-        websocket = WebSocketResponse()
-        await websocket.prepare(original_request)
+        if (key := data.get("secret")):
+            return str(key) == str(self.secret_key)
+        return bool(self.secret_key is None)
 
-        async for message in websocket:
-            asyncio.create_task(self.__process_request__(websocket, message, False))
-
-    async def __handle_multicast__(self, original_request: Request) -> None:
-        self.logger.debug("Handing new IPC request")
-
-        websocket = WebSocketResponse()
-        await websocket.prepare(original_request)
-
-        async for message in websocket:
-            asyncio.create_task(self.__process_request__(websocket, message, True))
-
-    async def __process_request__(self, websocket: WebSocketResponse, message: WSMessage, multicast: bool) -> None:
-        request = message.json()
-
-        self.logger.debug(f"Receiving request: {request!r}")
-
-        endpoint: Optional[RouteFunc] = request.get("endpoint")
-        secret_key: Optional[str] = websocket._req.headers.get("Secret-Key")
-
-        if request.get("connection_test"):
-            return await websocket.send_json({"code": 200})
-
-        elif secret_key != self.secret_key:
-            self.bot.dispatch("ipc_error", endpoint, IPCError("Received unauthorized request (invalid token provided)!"))
-            response = {
-                "error": "Received unauthorized request (invalid token provided)!", 
+    async def handle_request(self, websocket: WebSocketServerProtocol, message: Union[str, bytes], multucast: bool = True) -> None:
+        if not self.is_secure(message):
+            resp = json.dumps({
+                "error": "Invalid secret key!",
                 "code": 403
-            }
-        else:
-            if not endpoint:
-                self.bot.dispatch("ipc_error", endpoint, IPCError("Received invalid request (no endpoint provided)!"))
-                response = {
-                    "error": "Received invalid request (no endpoint provided)!",
-                    "code": 404
-                }
+            })
+            
+            return await websocket.send(resp)
 
-            elif not (_endpoint_ := self.endpoints.get(endpoint)):
-                self.bot.dispatch("ipc_error", endpoint, IPCError("Received invalid request (invalid endpoint requested)!"))
-                response = {
-                    "error": "Received invalid request (invalid endpoint requested)!",
-                    "code": 404
-                }
+        data: Dict[str, Any] = json.loads(message)
+        endpoint: str = data["endpoint"]
 
-            elif multicast and not _endpoint_[0].__multicasted__:
-                self.bot.dispatch("ipc_error", endpoint, IPCError("The requested is not available for multicast connections!"))
-                response = {
-                    "error": "The requested route is not available for multicast connections!",
-                    "code": 403
-                }
-                
-            else:
-                endpoint, payload_cls = self.endpoints.get(endpoint)
-                attempted_cls = self.__get_parent__(endpoint)
-                    
-                if attempted_cls:
-                    arguments = (attempted_cls, payload_cls(request))
-                else:
-                    # Client support
-                    arguments = (payload_cls(request),)
+        payload: Dict[str, Any] = {
+            "decoding": None,
+            "code": 200,
+            "response": None
+        }
 
-                try:
-                    response: Union[Dict, Any] = await endpoint(*arguments)
-                except Exception as exception:
-                    self.bot.dispatch("ipc_error", endpoint, exception)
-                    response = {
-                        "error": "Something went wrong while calling the route!",
-                        "code": 500,
-                    }
-
-                    self.logger.error(f"Received error while executing {endpoint!r}", exc_info=exception)
+        if not (coro := self.endpoints.get(endpoint)):
+            payload["code"] = 404
+            payload["error"] = "Unknown endpoint!"
+            payload["error_details"] = "The route that you're trying to call doesn't exist!"
+            self.bot.dispatch("ipc_error", None, NoEndpointFoundError(endpoint, details="The route that you're trying to call doesn't exist!"))
+            return await websocket.send(json.dumps(payload))
+        
         try:
-            response = response or {} 
-            if not isinstance(response, Dict):
-                exception = f"Expected type `Dict` as response, got {response.__class__.__name__!r} instead!"
-                
-                self.bot.dispatch("ipc_error", endpoint, JSONEncodeError(exception))
+            func = coro[0]
 
-                response = {
-                    "error": exception, 
-                    "code": 500
-                }
+            if multucast and not func.__getattribute__("__multicast__"):
+                payload["code"] = 500
+                payload["error"] = "The requested route is not available for multicast connections!"
+                payload["error_details"] = "This route can only be called with standart client!"
+                self.bot.dispatch("ipc_error", endpoint, MulticastFailure(endpoint, details="This route can only be called with standart client!"))
+                return await websocket.send(json.dumps(payload))
 
-                self.logger.debug(f"Sending Response: {response!r}")
-                return await websocket.send_json(response)
+            resp: Optional[Union[Dict, str]] = await func(self.get_cls(func), coro[1](data))
+        except Exception as exc:
+            payload["code"] = 500
+            payload["error"] = "Unexpected error occurred while calling the route!"
+            payload["error_details"] = str(exc)
 
-            if not response.get("code"):
-                response["code"] = 200
-
-            response["__bot__"] = self.bot.user.id
-
-            await websocket.send_json(response)
-        except Exception:
-            self.bot.dispatch("ipc_error", endpoint, IPCError("Could not send JSON data to websocket!"))
+            self.bot.dispatch("ipc_error", endpoint, exc)
+            return await websocket.send(json.dumps(payload))
+        
+        if resp and not (isinstance(resp, Dict) or isinstance(resp, str)):
+            payload["error"] = f"Expected type Dict or string as response, got {resp.__class__.__name__!r} instead!", 
+            payload["code"] = 500
+            self.bot.dispatch("ipc_error", endpoint, InvalidReturn(details=f"Expected type Dict or string as response, got {resp.__class__.__name__!r} instead!"))
+            return await websocket.send(json.dumps(payload))
+        
+        if isinstance(resp, Dict):
+            payload["decoding"] = "JSON"
+            payload["response"] = json.dumps(resp)
         else:
-            self.logger.debug(f"Sending response: {response!r}")
+            payload["response"] = resp
+        
+        return await websocket.send(json.dumps(payload))
 
-    async def __create_server__(self, name: str, port: int, handler: Handler) -> None:
-        self.__servers__[name] = Application()
-        self.__servers__[name].router.add_route("GET", "/", handler)
+    async def create_server(self, name: str, port: int, ws_handler: Handler) -> None:
+        if name in self.servers:
+            raise ServerAlreadyStarted(name, details=f"{name!r} is already started!")
+        
+        self.servers[name] = await serve(ws_handler, self.host, port)
+        self.logger.debug(f"{name.title()} is ready for use!")
 
-        self.__runners__[name] = AppRunner(self.__servers__[name])
-        await self.__runners__[name].setup()
+    async def standart_handler(self, websocket: WebSocketServerProtocol) -> None:
+        id = websocket.request_headers["ID"]
+        try:
+            if self.connection:
+                if not self.connection[0] == id:
+                    resp = json.dumps({
+                        "error": "Connection already reserved!",
+                        "details": self.connection[0],
+                        "code": 403
+                    })
+                    
+                    return await websocket.send(resp)
+            else:
+                self.logger.debug(f"New connection created: {id}")
+                self.connection = id, websocket
+        
+            async for message in websocket:
+                await self.handle_request(websocket, message, False)
+        except(ConnectionClosedError,ConnectionClosed):
+            self.logger.debug(f"Connection closed by the client: {self.connection[0]}")
+            self.connection = None
 
-        self.__webservers__[name] = TCPSite(self.__runners__[name], self.host, port)
-        await self.__webservers__[name].start()
-
-        self.logger.info(f"{name.title()!r} server is ready for use")
+    async def multicast_handler(self, websocket: WebSocketServerProtocol) -> None:
+        with contextlib.suppress(ConnectionClosedError,ConnectionClosed):
+            async for message in websocket:
+                await self.handle_request(websocket, message, False)
 
     async def start(self) -> None:
         """|coro|
@@ -226,30 +213,23 @@ class Server:
         Starts all necessary processes for the servers and runners to work properly
 
         """
-        self.loop = asyncio.get_event_loop()
-        await self.__create_server__("standard", self.standard_port, self.__handle_standard__)
-        
-        if self.do_multicast:
-            await self.__create_server__("mutlicast", self.multicast_port, self.__handle_multicast__)
-        
-        if self.bot.is_ready():
-            self.bot.dispatch("ipc_ready")
-        else:
-            self.loop.create_task(self.bot.wait_until_ready())
-            self.bot.dispatch("ipc_ready")
+        await self.create_server("standard", self.standard_port, self.standart_handler)
 
+        if self.do_multicast:
+            await self.create_server("mutlicast", self.multicast_port, self.multicast_handler)
+
+        self.bot.dispatch("ipc_ready")
+    
     async def stop(self) -> None:
         """|coro|
 
-        Takes care of shutting down the servers and cleaning up the runners
+        Takes care of shutting down the server(s)
 
         """
+        for name, server in self.servers.items():
+            server.close()  # pragma: no cover
+            await server.wait_closed()  # pragma: no cover
 
-        for server, runner in zip(self.__servers__.items(), self.__runners__.items()):
-            self.logger.info(f"Stopping {server[0]} server")
-            await server[1].shutdown()
-
-            self.logger.info(f"Stopping {runner[0]} runner")
-            await runner[1].cleanup()
-
-        self.__servers__ = self.__runners__ = self.__webservers__ = {}
+            self.logger.info(f"{name!r} server has been stopped!")
+        
+        self.servers = {}
