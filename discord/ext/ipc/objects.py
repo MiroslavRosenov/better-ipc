@@ -68,7 +68,7 @@ class ClientPayload:
         """
         return self.payload.items()
 
-class ServerResposne:
+class ServerResponse:
     """
     The class when getting response for the Server
 
