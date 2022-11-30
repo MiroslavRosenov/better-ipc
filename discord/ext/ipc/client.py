@@ -7,7 +7,7 @@ import uuid
 
 from typing import Optional, Union, Any, Dict
 from websockets.client import connect, WebSocketClientProtocol 
-from discord.ext.ipc.objects import ServerResposne
+from discord.ext.ipc.objects import ServerResponse
 
 
 class Client:
