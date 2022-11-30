@@ -7,7 +7,7 @@ import uuid
 
 from typing import Optional, Union, Any, Dict
 from websockets.client import connect, WebSocketClientProtocol 
-from discord.ext.ipc.objects import ServerResposne
+from discord.ext.ipc.objects import ServerResponse
 
 
 class Client:
@@ -55,7 +55,7 @@ class Client:
             return f"ws://{self.host}:{self.multicast_port}"
         return f"ws://{self.host}:{self.standard_port}"
 
-    async def request(self, endpoint: str, **kwargs: Any) -> ServerResposne:
+    async def request(self, endpoint: str, **kwargs: Any) -> ServerResponse:
         """|coro|
         
         Makes a request to the server URL.
@@ -78,5 +78,5 @@ class Client:
             },
         }))
 
-        return ServerResposne(await self.connection.recv())
+        return ServerResponse(await self.connection.recv())
     
