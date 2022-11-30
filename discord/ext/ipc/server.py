@@ -116,28 +116,26 @@ class Server:
         return bool(self.secret_key is None)
 
     async def handle_request(self, websocket: WebSocketServerProtocol, message: Union[str, bytes], multucast: bool = True) -> None:
-        if not self.is_secure(message):
-            resp = json.dumps({
-                "error": "Invalid secret key!",
-                "code": 403
-            })
-            
-            return await websocket.send(resp)
-
-        data: Dict[str, Any] = json.loads(message)
-        endpoint: str = data["endpoint"]
-
-        payload: Dict[str, Any] = {
+        payload: Dict[str, Union[str, int]] = {
             "decoding": None,
             "code": 200,
             "response": None
         }
+        
+        if not self.is_secure(message):
+            payload["code"] = 403
+            payload["error"] = "Unauthorized"
+            payload["error_details"] = "You're trying to connect with an invalid secret key!"
+            return await websocket.send(json.dumps(payload))
+
+        data: Dict[str, Any] = json.loads(message)
+        endpoint: str = data["endpoint"]
 
         if not (coro := self.endpoints.get(endpoint)):
             payload["code"] = 404
             payload["error"] = "Unknown endpoint!"
             payload["error_details"] = "The route that you're trying to call doesn't exist!"
-            self.bot.dispatch("ipc_error", None, NoEndpointFoundError(endpoint, details="The route that you're trying to call doesn't exist!"))
+            self.bot.dispatch("ipc_error", None, NoEndpointFoundError(endpoint, "The route that you're trying to call doesn't exist!"))
             return await websocket.send(json.dumps(payload))
         
         try:
@@ -147,7 +145,7 @@ class Server:
                 payload["code"] = 500
                 payload["error"] = "The requested route is not available for multicast connections!"
                 payload["error_details"] = "This route can only be called with standart client!"
-                self.bot.dispatch("ipc_error", endpoint, MulticastFailure(endpoint, details="This route can only be called with standart client!"))
+                self.bot.dispatch("ipc_error", endpoint, MulticastFailure(endpoint, "This route can only be called with standart client!"))
                 return await websocket.send(json.dumps(payload))
 
             resp: Optional[Union[Dict, str]] = await func(self.get_cls(func), coro[1](data))
@@ -162,7 +160,7 @@ class Server:
         if resp and not (isinstance(resp, Dict) or isinstance(resp, str)):
             payload["error"] = f"Expected type Dict or string as response, got {resp.__class__.__name__!r} instead!", 
             payload["code"] = 500
-            self.bot.dispatch("ipc_error", endpoint, InvalidReturn(details=f"Expected type Dict or string as response, got {resp.__class__.__name__!r} instead!"))
+            self.bot.dispatch("ipc_error", endpoint, InvalidReturn(endpoint, f"Expected type Dict or string as response, got {resp.__class__.__name__} instead!"))
             return await websocket.send(json.dumps(payload))
         
         if isinstance(resp, Dict):
@@ -182,6 +180,7 @@ class Server:
 
     async def standart_handler(self, websocket: WebSocketServerProtocol) -> None:
         id = websocket.request_headers["ID"]
+        
         try:
             if self.connection:
                 if not self.connection[0] == id:
@@ -197,15 +196,16 @@ class Server:
                 self.connection = id, websocket
         
             async for message in websocket:
-                await self.handle_request(websocket, message, False)
+                with contextlib.suppress(ConnectionClosedError,ConnectionClosed):
+                    await self.handle_request(websocket, message, False)
         except(ConnectionClosedError,ConnectionClosed):
             self.logger.debug(f"Connection closed by the client: {self.connection[0]}")
             self.connection = None
-
+    
     async def multicast_handler(self, websocket: WebSocketServerProtocol) -> None:
         with contextlib.suppress(ConnectionClosedError,ConnectionClosed):
             async for message in websocket:
-                await self.handle_request(websocket, message, False)
+                await self.handle_request(websocket, message, True)
 
     async def start(self) -> None:
         """|coro|
@@ -227,8 +227,8 @@ class Server:
 
         """
         for name, server in self.servers.items():
-            server.close()  # pragma: no cover
-            await server.wait_closed()  # pragma: no cover
+            await server.close()
+            await server.wait_closed()
 
             self.logger.info(f"{name!r} server has been stopped!")
         

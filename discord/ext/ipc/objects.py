@@ -68,7 +68,7 @@ class ClientPayload:
         """
         return self.payload.items()
 
-class ServerResposne:
+class ServerResponse:
     """
     The class when getting response for the Server
 
@@ -101,8 +101,8 @@ class ServerResposne:
 
         """
         if self.decoding == "JSON":
-            return json.loads(self.data["response"])
-        return self.data["response"]
+            return json.loads(self.data.get("response"))
+        return self.data.get("response")
 
     @property
     def error(self) -> Optional[Dict[str, Any]]:
@@ -115,7 +115,7 @@ class ServerResposne:
             return {
                 "error": error,
                 "status": self.status,
-                "details": self.data["error_details"],
+                "details": self.data.get("error_details"),
             }
 
     @property
