@@ -37,6 +37,7 @@ py -m pip install -U git+https://github.com/MiroslavRosenov/better-ipc
 # Support
 
 [Support server](https://discord.gg/Rpg7zjFYsh)
+
 [Official documentation](https://docs.better-ipc.xyz)
 
 # Examples
