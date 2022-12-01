@@ -10,7 +10,7 @@
 
 <img src="https://raw.githubusercontent.com/MiroslavRosenov/better-ipc/main/banner.png">
 
-This library is heavily based on [discord-ext-ipc](https://github.com/Ext-Creators/discord-ext-ipc), which is no longer maintained.
+This library is *based* on [discord-ext-ipc](https://github.com/Ext-Creators/discord-ext-ipc), which is no longer maintained.
 
 # Installation
 > ### Stable version
@@ -36,14 +36,14 @@ py -m pip install -U git+https://github.com/MiroslavRosenov/better-ipc
 
 # Support
 
-You can join the support server [here](https://discord.gg/Rpg7zjFYsh)
+[Support server](https://discord.gg/Rpg7zjFYsh)
+[Official documentation](https://docs.better-ipc.xyz)
 
 # Examples
 
 ### Client example
 ```python
 import discord
-
 from typing import Dict
 from discord.ext import commands, ipc
 from discord.ext.ipc.server import Server
@@ -111,7 +111,8 @@ ipc = Client(secret_key="🐼")
 
 @app.route('/')
 async def main():
-    return await ipc.request("get_user_data", user_id=383946213629624322)
+    resp = await ipc.request("get_user_data", user_id=383946213629624322)
+    return str(resp.response)
 
 if __name__ == '__main__':
     app.run()
