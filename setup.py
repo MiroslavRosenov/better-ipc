@@ -20,7 +20,7 @@ with open('discord/ext/ipc/__init__.py', 'rb') as f:
 setuptools.setup(
     author="DaPandaOfficial",
     python_requires=">=3.8.0",
-    license="Apache Software License",
+    license="MIT License",
     author_email="miroslav.rosenov39@gmail.com",
     long_description_content_type="text/markdown",
     url="https://github.com/MiroslavRosenov/better-ipc",
@@ -34,9 +34,8 @@ setuptools.setup(
     },
     classifiers=[
         "Development Status :: 5 - Production/Stable",
-        "Framework :: AsyncIO",
         "Intended Audience :: Developers",
-        "License :: OSI Approved :: Apache Software License",
+        "License :: OSI Approved :: MIT License",
         "Natural Language :: English",
         "Operating System :: OS Independent",
         "Programming Language :: Python",
