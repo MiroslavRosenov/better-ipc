@@ -1,12 +1,12 @@
 """
 Better IPC
-~~~~~~
+~~~~~~~~~~
 
 High-performance inter-process communication 
 library designed to work with the latest version of discord.py
 
-:copyright: 2022, DaPandaOfficial
-:license: MIT License
+:copyright: (C) 2022 DaPandaOfficial
+:license: GNU GENERAL PUBLIC LICENSE
 """
 import discord
 
@@ -15,8 +15,8 @@ if discord.version_info.major < 2:
 
 __title__ = "better-ipc"
 __author__ = "DaPandaOfficial"
-__license__ = "MIT License"
-__copyright__ = "Copyright 2022, DaPandaOfficial"
+__license__ = "GNU GENERAL PUBLIC LICENSE"
+__copyright__ = "Copyright (C) 2022 DaPandaOfficial"
 __version__ = "2.0.1"
 
 
