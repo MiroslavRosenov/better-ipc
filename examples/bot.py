@@ -21,8 +21,4 @@ class MyBot(commands.Bot):
     @Server.route()
     async def get_user_data(self, data: ClientPayload) -> Dict:
         user = self.get_user(data.user_id)
-<<<<<<< HEAD
         return user._to_minimal_user_json()
-=======
-        return user._to_minimal_user_json()
->>>>>>> c82736bd09357633bf0fa0db7be4d7fe6f67b7f6
