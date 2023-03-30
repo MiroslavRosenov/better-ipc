@@ -7,6 +7,9 @@ class StatusEnum(enum.Enum):
     FORBIDDEN = 403
     NOT_FOUND= 404
     INTERNAL_ERROR = 500
+    
+    def __str__(self) -> str:
+        return str(self.value)
 
 class ClientPayload:
     """
@@ -40,17 +43,17 @@ class ClientPayload:
         self.data: Optional[Dict[str, Any]] = payload.get("kwargs")
 
     def __getitem__(self, __k: str):
-        return self.data[__k]
+        return self.data[__k] # type: ignore
 
     def __contains__(self, __o: object) -> bool:
-        return __o in self.data or __o in self.data.values()
+        return __o in self.data or __o in self.data.values() # type: ignore
 
     def __getattribute__(self, __name: str) -> Any:
         try:
             return object.__getattribute__(self, __name)
         except AttributeError:
             try:
-                return self.data[__name]
+                return self.data[__name] # type: ignore
             except KeyError:
                 raise AttributeError(__name)
 
@@ -88,7 +91,7 @@ class ServerResponse:
     """
     def __init__(self, payload: str):
         self.data: Dict[str, Any] = json.loads(payload)
-        self.decoding: str = self.data.get("decoding")
+        self.decoding: str = self.data["decoding"]
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} response={self.response} status={self.status.name}>"
@@ -101,8 +104,8 @@ class ServerResponse:
 
         """
         if self.decoding == "JSON":
-            return json.loads(self.data.get("response"))
-        return self.data.get("response")
+            return json.loads(self.data["response"])
+        return self.data["response"]
 
     @property
     def error(self) -> Optional[Dict[str, Any]]:

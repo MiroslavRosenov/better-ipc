@@ -4,7 +4,7 @@ class BaseException(Exception):
         self.name = name
         self.details = details
 
-class NoEndpointFoundError(BaseException):
+class NoEndpointFound(BaseException):
     """Raised when trying to request an unknown endpoint"""
 
 class MulticastFailure(BaseException):
@@ -17,3 +17,7 @@ class InvalidReturn(BaseException):
 class ServerAlreadyStarted(BaseException):
     """Raise trying to start already running server"""
 
+class ServerTimeout(BaseException):
+    def __init__(self, details: str, timeout: int) -> None:
+        self.details = details
+        self.timeout = timeout

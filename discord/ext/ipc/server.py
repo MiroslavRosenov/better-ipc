@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 
 import logging
 import json
@@ -6,12 +7,12 @@ import contextlib
 import inspect
 
 from discord.ext.commands import Bot, Cog
-from typing import TYPE_CHECKING, Optional, Callable, ClassVar, TypeVar, Union, Type, Coroutine, Tuple, Any, Dict
+from typing import TYPE_CHECKING, Optional, Callable, ClassVar, TypeVar, Union, Type, Awaitable, Tuple, Any, Dict
 
 from websockets.exceptions import ConnectionClosedError, ConnectionClosed
-from websockets.server import WebSocketServerProtocol, serve
+from websockets.server import WebSocketServerProtocol, WebSocketServer, serve
 
-from .errors import InvalidReturn, NoEndpointFoundError, MulticastFailure, ServerAlreadyStarted
+from .errors import InvalidReturn, NoEndpointFound, MulticastFailure, ServerAlreadyStarted
 from .objects import ClientPayload
 
 
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
     T = TypeVar("T")
     
     RouteFunc: TypeAlias = Callable[P, T]
-    Handler: TypeAlias = Coroutine
+    Handler = Callable[[WebSocketServerProtocol], Awaitable[Any]]
 
 class Server:
     """
@@ -66,13 +67,13 @@ class Server:
         self.do_multicast = do_multicast
 
         self.logger = logger or logging.getLogger(__name__)
-        self.servers: Dict[str, WebSocketServerProtocol] = {}
-        self.connection: Tuple[str, WebSocketServerProtocol] = None
+        self.servers: Dict[str, WebSocketServer] = {}
+        self.connection: Optional[Tuple[str, WebSocketServerProtocol]] = None
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} endpoints={len(self.endpoints)} started={self.started} standard_port={self.standard_port!r} multicast_port={self.multicast_port!r} do_multicast={self.do_multicast}>"
 
-    def get_cls(self, func: RouteFunc) -> Optional[Cog]:
+    def get_cls(self, func: RouteFunc) -> Union[Cog, Bot]:
         for cog in self.bot.cogs.values():
             if func.__name__ in dir(cog):
                 return cog
@@ -114,9 +115,10 @@ class Server:
         if (key := data.get("secret")):
             return str(key) == str(self.secret_key)
         return bool(self.secret_key is None)
+    
 
     async def handle_request(self, websocket: WebSocketServerProtocol, message: Union[str, bytes], multucast: bool = True) -> None:
-        payload: Dict[str, Union[str, int]] = {
+        payload: Dict[str, Union[str, int, None]] = {
             "decoding": None,
             "code": 200,
             "response": None
@@ -135,7 +137,7 @@ class Server:
             payload["code"] = 404
             payload["error"] = "Unknown endpoint!"
             payload["error_details"] = "The route that you're trying to call doesn't exist!"
-            self.bot.dispatch("ipc_error", None, NoEndpointFoundError(endpoint, "The route that you're trying to call doesn't exist!"))
+            self.bot.dispatch("ipc_error", None, NoEndpointFound(endpoint, "The route that you're trying to call doesn't exist!"))
             return await websocket.send(json.dumps(payload))
         
         try:
@@ -158,7 +160,7 @@ class Server:
             return await websocket.send(json.dumps(payload))
         
         if resp and not (isinstance(resp, Dict) or isinstance(resp, str)):
-            payload["error"] = f"Expected type Dict or string as response, got {resp.__class__.__name__!r} instead!", 
+            payload["error"] = f"Expected type Dict or string as response, got {resp.__class__.__name__!r} instead!"
             payload["code"] = 500
             self.bot.dispatch("ipc_error", endpoint, InvalidReturn(endpoint, f"Expected type Dict or string as response, got {resp.__class__.__name__} instead!"))
             return await websocket.send(json.dumps(payload))
@@ -173,7 +175,7 @@ class Server:
 
     async def create_server(self, name: str, port: int, ws_handler: Handler) -> None:
         if name in self.servers:
-            raise ServerAlreadyStarted(name, details=f"{name!r} is already started!")
+            raise ServerAlreadyStarted(name, f"{name!r} is already started!")
         
         self.servers[name] = await serve(ws_handler, self.host, port)
         self.logger.debug(f"{name.title()} is ready for use!")
@@ -187,7 +189,7 @@ class Server:
                     resp = json.dumps({
                         "error": "Connection already reserved!",
                         "details": self.connection[0],
-                        "code": 403
+                        "code": 422
                     })
                     
                     return await websocket.send(resp)
@@ -196,16 +198,17 @@ class Server:
                 self.connection = id, websocket
         
             async for message in websocket:
-                with contextlib.suppress(ConnectionClosedError,ConnectionClosed):
-                    await self.handle_request(websocket, message, False)
-        except(ConnectionClosedError,ConnectionClosed):
-            self.logger.debug(f"Connection closed by the client: {self.connection[0]}")
+                with contextlib.suppress(ConnectionClosedError, ConnectionClosed):
+                    await asyncio.create_task(self.handle_request(websocket, message, False))
+            
+        except (ConnectionClosedError, ConnectionClosed):
+            self.logger.debug(f"Connection closed by the client: {self.connection[0]}") # type: ignore
             self.connection = None
     
     async def multicast_handler(self, websocket: WebSocketServerProtocol) -> None:
-        with contextlib.suppress(ConnectionClosedError,ConnectionClosed):
+        with contextlib.suppress(ConnectionClosedError, ConnectionClosed):
             async for message in websocket:
-                await self.handle_request(websocket, message, True)
+                await asyncio.create_task(self.handle_request(websocket, message, True))
 
     async def start(self) -> None:
         """|coro|
@@ -227,9 +230,8 @@ class Server:
 
         """
         for name, server in self.servers.items():
-            await server.close()
+            server.close()
             await server.wait_closed()
-
             self.logger.info(f"{name!r} server has been stopped!")
         
         self.servers = {}
