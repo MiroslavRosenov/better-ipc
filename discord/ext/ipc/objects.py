@@ -91,7 +91,7 @@ class ServerResponse:
     """
     def __init__(self, payload: str):
         self.data: Dict[str, Any] = json.loads(payload)
-        self.decoding: str = self.data["decoding"]
+        self.decoding: Optional[str] = self.data.get("decoding")
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} response={self.response} status={self.status.name}>"
