@@ -146,8 +146,8 @@ class Server:
             if multucast and not func.__getattribute__("__multicast__"):
                 payload["code"] = 500
                 payload["error"] = "The requested route is not available for multicast connections!"
-                payload["error_details"] = "This route can only be called with standart client!"
-                self.bot.dispatch("ipc_error", endpoint, MulticastFailure(endpoint, "This route can only be called with standart client!"))
+                payload["error_details"] = "This route can only be called with standard client!"
+                self.bot.dispatch("ipc_error", endpoint, MulticastFailure(endpoint, "This route can only be called with standard client!"))
                 return await websocket.send(json.dumps(payload))
 
             resp: Optional[Union[Dict, str]] = await func(self.get_cls(func), coro[1](data))
@@ -180,7 +180,7 @@ class Server:
         self.servers[name] = await serve(ws_handler, self.host, port)
         self.logger.debug(f"{name.title()} is ready for use!")
 
-    async def standart_handler(self, websocket: WebSocketServerProtocol) -> None:
+    async def standard_handler(self, websocket: WebSocketServerProtocol) -> None:
         id = websocket.request_headers["ID"]
         
         try:
@@ -216,7 +216,7 @@ class Server:
         Starts all necessary processes for the servers and runners to work properly
 
         """
-        await self.create_server("standard", self.standard_port, self.standart_handler)
+        await self.create_server("standard", self.standard_port, self.standard_handler)
 
         if self.do_multicast:
             await self.create_server("mutlicast", self.multicast_port, self.multicast_handler)
