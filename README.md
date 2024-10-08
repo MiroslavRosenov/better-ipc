@@ -6,7 +6,17 @@
 <img src="https://img.shields.io/github/license/MiroslavRosenov/better-ipc">
 <a href="https://discord.gg/Rpg7zjFYsh" target="_blank"><img src="https://img.shields.io/discord/875005644594372638?label=discord"></a>
 
-## High-performance inter-process communication library designed to work with the latest version of [discord.py](https://github.com/Rapptz/discord.py)
+## 📢 Announcement: Repository Archived 📢
+
+I am announcing that as of today (08.10.2024) the GitHub repository better-ipc is now archived.
+
+This project has served its purpose, and after careful consideration, I’ve decided to archive it to preserve the repository in its current state. While it will no longer be actively maintained or accept new contributions, it will remain available for reference and historical purposes.
+
+I want to extend my sincere gratitude to everyone who has provided feedback and supported this project. Your involvement has been invaluable, and I hope that the repository continues to serve as a helpful resource for the community.
+
+Feel free to continue exploring and forking the repository if you find it useful. For any future projects or improvements, stay tuned!
+
+## Better IPC
 
 <img src="https://raw.githubusercontent.com/MiroslavRosenov/better-ipc/main/banner.png">
 
